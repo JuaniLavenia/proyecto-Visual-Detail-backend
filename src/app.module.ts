@@ -7,9 +7,10 @@ import { ProductService } from './products/products.service';
 import { ProductSchema } from './products/product.model';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
+import { UserSchema } from './users/user.model';
+import { JwtModule } from '@nestjs/jwt';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
-import { UserSchema } from './users/user.model';
 
 const envConfig = dotenv.parse(fs.readFileSync('.env'));
 
@@ -26,6 +27,10 @@ const envConfig = dotenv.parse(fs.readFileSync('.env'));
       { name: 'Product', schema: ProductSchema },
       { name: 'User', schema: UserSchema },
     ]),
+    JwtModule.register({
+      secret: envConfig.JWT_SECRET,
+      signOptions: { expiresIn: '1h' },
+    }),
   ],
   controllers: [AppController, ProductsController, UsersController],
   providers: [AppService, ProductService, UsersService],
