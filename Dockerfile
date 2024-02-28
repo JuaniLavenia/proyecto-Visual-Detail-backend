@@ -1,14 +1,8 @@
-# Use the official Node.js image as the base image
 FROM node:18
-
-# Set the working directory in the container
 WORKDIR /
-
-# Copy the application files into the working directory
 COPY . /app
-
-# Install the application dependencies
 RUN npm install
-
-# Define the entry point for the container
-CMD ["npm", "run", "start"]
+ENV PORT 3000 
+ENV MONGODB_URI 'mongodb+srv://Rolling:rolling.useradmin@cluster0.mytro0v.mongodb.net/visualDetaling?retryWrites=true&w=majority'
+ENV JWT_SECRET '2k3jh4vb1k2j34k'
+CMD ["npm", "start"]
