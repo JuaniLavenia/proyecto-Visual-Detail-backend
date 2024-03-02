@@ -27,15 +27,37 @@ const postProduct = async (req, res) => {
   console.log(req.body, req.file);
 
   try {
-    const producto = new Producto({
-      name: req.body.name,
-      description: req.body.description,
-      image: req.file.filename,
-      category: req.body.category,
-      price: req.body.price,
-      stock: req.body.stock,
-      capacity: req.body.capacity,
-    });
+    const productFields = {};
+
+    if (req.body.name) {
+      productFields.name = req.body.name;
+    }
+
+    if (req.body.description) {
+      productFields.description = req.body.description;
+    }
+
+    if (req.file && req.file.filename) {
+      productFields.image = req.file.filename;
+    }
+
+    if (req.body.category) {
+      productFields.category = req.body.category;
+    }
+
+    if (req.body.price) {
+      productFields.price = req.body.price;
+    }
+
+    if (req.body.stock) {
+      productFields.stock = req.body.stock;
+    }
+
+    if (req.body.capacity) {
+      productFields.capacity = req.body.capacity;
+    }
+
+    const producto = new Producto(productFields);
 
     const result = await producto.save();
 
