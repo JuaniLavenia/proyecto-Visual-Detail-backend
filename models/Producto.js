@@ -26,7 +26,6 @@ const schema = new Schema({
   },
   brand: {
     type: String,
-    required: true,
   },
 });
 

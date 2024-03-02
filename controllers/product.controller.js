@@ -57,6 +57,10 @@ const postProduct = async (req, res) => {
       productFields.capacity = req.body.capacity;
     }
 
+    if (req.body.brand) {
+      productFields.brand = req.body.brand;
+    }
+
     const producto = new Producto(productFields);
 
     const result = await producto.save();
@@ -98,6 +102,10 @@ const updateProduct = async (req, res) => {
 
     if (req.body.category) {
       updatedFields.category = req.body.category;
+    }
+
+    if (req.body.brand) {
+      updatedFields.brand = req.body.brand;
     }
 
     const result = await Producto.findByIdAndUpdate(
