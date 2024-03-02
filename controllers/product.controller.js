@@ -48,21 +48,44 @@ const postProduct = async (req, res) => {
 
 const updateProduct = async (req, res) => {
   try {
+    const updatedFields = {};
+
+    if (req.body.name) {
+      updatedFields.name = req.body.name;
+    }
+
+    if (req.body.description) {
+      updatedFields.description = req.body.description;
+    }
+
+    if (req.file && req.file.filename) {
+      updatedFields.image = req.file.filename;
+    }
+
+    if (req.body.price) {
+      updatedFields.price = req.body.price;
+    }
+
+    if (req.body.stock) {
+      updatedFields.stock = req.body.stock;
+    }
+
+    if (req.body.capacity) {
+      updatedFields.capacity = req.body.capacity;
+    }
+
+    if (req.body.category) {
+      updatedFields.category = req.body.category;
+    }
+
     const result = await Producto.findByIdAndUpdate(
       req.params.id,
-      {
-        name: req.body.name,
-        description: req.body.description,
-        image: req.file.filename,
-        price: req.body.price,
-        stock: req.body.stock,
-        capacity: req.body.capacity,
-        category: req.body.category,
-      },
+      updatedFields,
       {
         new: true,
       }
     );
+
     res.json(result);
   } catch (err) {
     console.log(err);
