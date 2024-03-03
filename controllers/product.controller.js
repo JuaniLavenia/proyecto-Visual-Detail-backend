@@ -2,12 +2,22 @@ const Producto = require("../models/Producto");
 
 const getProducts = async (req, res) => {
   try {
-    const productos = await Producto.find();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
 
-    res.json(productos);
+    const skip = (page - 1) * limit;
+    const totalProductsCount = await Producto.countDocuments();
+    const productos = await Producto.find().skip(skip).limit(limit);
+
+    res.json({
+      products: productos,
+      currentPage: page,
+      totalPages: Math.ceil(totalProductsCount / limit),
+      totalProducts: totalProductsCount,
+    });
   } catch (err) {
     console.log(err);
-    return res.status(401).json({ error: err.message });
+    return res.status(500).json({ error: "Error interno del servidor" });
   }
 };
 
