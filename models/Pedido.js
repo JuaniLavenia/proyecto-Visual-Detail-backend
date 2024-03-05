@@ -1,5 +1,4 @@
 const { Schema, model } = require("mongoose");
-const User = require("./User");
 
 const pedidoSchema = new Schema({
   numeroPedido: {
@@ -17,6 +16,11 @@ const pedidoSchema = new Schema({
       cantidad: Number,
     },
   ],
+  estado: {
+    type: String,
+    enum: ["Pendiente", "Completado", "Cancelado"],
+    default: "Pendiente",
+  },
 });
 
 pedidoSchema.pre("save", async function (next) {
