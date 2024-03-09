@@ -23,6 +23,8 @@ app.use(cors());
 app.use("/api", require("./routes/users"));
 app.use("/api", require("./routes/productos"));
 app.use("/api", require("./routes/pedidos"));
+app.use("/api", require("./routes/favorites.routes"));
+app.use("/api", require("./routes/cart.routes"));
 app.use("/api", require("./routes/auth.router"));
 
 const PORT = process.env.PORT || 5000;
