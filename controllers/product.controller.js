@@ -51,6 +51,10 @@ const postProduct = async (req, res) => {
       productFields.image = req.file.filename;
     }
 
+    if (req.body.imageUrl) {
+      productFields.image = req.body.imageUrl;
+    }
+
     if (req.body.category) {
       productFields.category = req.body.category;
     }
@@ -69,6 +73,13 @@ const postProduct = async (req, res) => {
 
     if (req.body.brand) {
       productFields.brand = req.body.brand;
+    }
+
+    if (req.file && req.file.filename && req.body.imageUrl) {
+      return res.status(400).json({
+        error:
+          "Solo puedes proporcionar una imagen o un enlace a la imagen, no ambos.",
+      });
     }
 
     const producto = new Producto(productFields);
@@ -98,6 +109,10 @@ const updateProduct = async (req, res) => {
       updatedFields.image = req.file.filename;
     }
 
+    if (req.body.imageUrl) {
+      updatedFields.image = req.body.imageUrl;
+    }
+
     if (req.body.price) {
       updatedFields.price = req.body.price;
     }
@@ -116,6 +131,13 @@ const updateProduct = async (req, res) => {
 
     if (req.body.brand) {
       updatedFields.brand = req.body.brand;
+    }
+
+    if (req.file && req.file.filename && req.body.imageUrl) {
+      return res.status(400).json({
+        error:
+          "Solo puedes proporcionar una imagen o un enlace a la imagen, no ambos.",
+      });
     }
 
     const result = await Producto.findByIdAndUpdate(
