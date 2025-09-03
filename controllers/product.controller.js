@@ -1,4 +1,5 @@
 const Producto = require("../models/Producto");
+const XLSX = require("xlsx");
 
 const getProducts = async (req, res) => {
   try {
@@ -212,6 +213,23 @@ const brandFilter = async (req, res) => {
   }
 };
 
+const bulkUploadProducts = async (req, res) => {
+  try {
+    const filePath = req.file.path;
+    const workbook = XLSX.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    // data es un array de objetos, cada uno representa un producto
+    const productos = await Producto.insertMany(data);
+
+    res.json({ message: "Productos cargados", productos });
+  } catch (err) {
+    console.log(err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
@@ -221,4 +239,5 @@ module.exports = {
   searchFilter,
   categoryFilter,
   brandFilter,
+  bulkUploadProducts,
 };
