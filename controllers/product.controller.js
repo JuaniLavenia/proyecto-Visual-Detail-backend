@@ -220,10 +220,26 @@ const bulkUploadProducts = async (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    // data es un array de objetos, cada uno representa un producto
-    const productos = await Producto.insertMany(data);
+    const resultados = [];
+    for (const producto of data) {
+      // Busca por name, category y capacity
+      const filtro = {
+        name: producto.name,
+        category: producto.category,
+        capacity: producto.capacity,
+        brand: producto.brand,
+      };
+      const actualizado = await Producto.findOneAndUpdate(filtro, producto, {
+        upsert: true,
+        new: true,
+      });
+      resultados.push(actualizado);
+    }
 
-    res.json({ message: "Productos cargados", productos });
+    res.json({
+      message: "Productos cargados/reemplazados",
+      productos: resultados,
+    });
   } catch (err) {
     console.log(err);
     res.status(400).json({ error: err.message });
