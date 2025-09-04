@@ -215,14 +215,13 @@ const brandFilter = async (req, res) => {
 
 const bulkUploadProducts = async (req, res) => {
   try {
-    const filePath = req.file.path;
-    const workbook = XLSX.readFile(filePath);
+    const buffer = req.file.buffer; // el archivo en memoria
+    const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
     const resultados = [];
     for (const producto of data) {
-      // Busca por name, category y capacity
       const filtro = {
         name: producto.name,
         category: producto.category,
