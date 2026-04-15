@@ -5,7 +5,7 @@
 
 const User = require('../models/User');
 const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
-const { AppError } = require('../middlewares/error.middleware');
+const { AppError } =require('../middleware/error.middleware');
 
 class UserService {
   /**

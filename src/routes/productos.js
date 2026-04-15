@@ -14,7 +14,7 @@ const {
   exportProducts,
 } = require("../controllers/product.controller");
 const { body, param, query } = require("express-validator");
-const { requestValidation } = require("../middlewares/common.middleware");
+const { requestValidation } = require("../middleware/common.middleware");
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {

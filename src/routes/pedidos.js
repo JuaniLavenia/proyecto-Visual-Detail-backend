@@ -6,7 +6,7 @@ const {
   modificarEstadoPedido,
 } = require("../controllers/pedidos.controller");
 const { body, param } = require("express-validator");
-const { requestValidation } = require("../middlewares/common.middleware");
+const { requestValidation } = require("../middleware/common.middleware");
 const router = express.Router();
 
 // POST /pedidos - validate pedido data

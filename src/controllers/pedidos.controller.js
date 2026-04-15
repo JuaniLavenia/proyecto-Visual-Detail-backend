@@ -5,7 +5,7 @@
  */
 
 const pedidoService = require('../services/pedido.service');
-const { asyncHandler } = require('../middlewares/error.middleware');
+const { asyncHandler } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
 const createPedido = asyncHandler(async (req, res, next) => {

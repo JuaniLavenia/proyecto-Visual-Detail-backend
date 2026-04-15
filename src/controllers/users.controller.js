@@ -5,7 +5,7 @@
  */
 
 const userService = require('../services/user.service');
-const { asyncHandler } = require('../middlewares/error.middleware');
+const { asyncHandler } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
 const getUserInfo = asyncHandler(async (req, res, next) => {

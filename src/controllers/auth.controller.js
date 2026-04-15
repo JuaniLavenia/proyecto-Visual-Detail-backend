@@ -6,7 +6,7 @@
 
 const { validationResult } = require('express-validator');
 const authService = require('../services/auth.service');
-const { asyncHandler } = require('../middlewares/error.middleware');
+const { asyncHandler } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
 const login = asyncHandler(async (req, res, next) => {

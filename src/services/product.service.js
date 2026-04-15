@@ -3,9 +3,9 @@
  * Handles product CRUD operations
  */
 
-const Producto = require('../models/Producto');
+const Producto = require('../models/Product');
 const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
-const { AppError } = require('../middlewares/error.middleware');
+const { AppError } = require('../middleware/error.middleware');
 
 class ProductService {
   /**

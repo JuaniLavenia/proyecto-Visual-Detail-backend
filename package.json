@@ -2,11 +2,11 @@
   "name": "back-visual-detailing",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node index.js",
-    "watch": "node --watch index.js",
-    "dev": "nodemon index.js"
+    "start": "node src/server.js",
+    "watch": "node --watch src/server.js",
+    "dev": "nodemon src/server.js"
   },
   "keywords": [],
   "author": "",

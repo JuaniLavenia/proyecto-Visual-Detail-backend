@@ -5,7 +5,7 @@
  */
 
 const productService = require("../services/product.service");
-const { asyncHandler } = require("../middlewares/error.middleware");
+const { asyncHandler } = require("../middleware/error.middleware");
 const { success, paginated } = require("../utils/response-formatter");
 
 /**

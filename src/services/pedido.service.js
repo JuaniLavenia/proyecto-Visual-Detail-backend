@@ -3,9 +3,9 @@
  * Handles order CRUD operations
  */
 
-const Pedido = require('../models/Pedido');
+const Pedido = require('../models/Order');
 const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
-const { AppError } = require('../middlewares/error.middleware');
+const { AppError } = require('../middleware/error.middleware');
 
 class PedidoService {
   /**

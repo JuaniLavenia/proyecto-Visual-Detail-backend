@@ -6,7 +6,7 @@ const {
   updateUser,
 } = require("../controllers/users.controller");
 const { body, param } = require("express-validator");
-const { requestValidation } = require("../middlewares/common.middleware");
+const { requestValidation } = require("../middleware/common.middleware");
 
 // GET /users - get all users
 router.get("/users", getUsers);

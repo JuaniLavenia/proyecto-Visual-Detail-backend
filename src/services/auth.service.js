@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const config = require('../config');
 const { sanitizeFindQuery } = require('../utils/query-sanitizer');
-const { AppError } = require('../middlewares/error.middleware');
+const { AppError } = require('../middleware/error.middleware');
 
 class AuthService {
   /**

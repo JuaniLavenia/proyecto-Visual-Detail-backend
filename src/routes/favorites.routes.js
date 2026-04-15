@@ -1,28 +1,28 @@
 const express = require("express");
 const router = express.Router();
 const {
-  getUserCart,
-  addToCart,
-  removeFromCart,
-} = require("../controllers/cart.controller");
+  getUserFavorites,
+  addFavorite,
+  deleteFavorite,
+} = require("../controllers/favorites.controller");
 const { body, param } = require("express-validator");
-const { requestValidation } = require("../middlewares/common.middleware");
+const { requestValidation } = require("../middleware/common.middleware");
 
-// GET /cart/:userId - validate userId
+// GET /favorites/:userId - validate userId
 router.get(
-  "/cart/:userId",
+  "/favorites/:userId",
   [
     param("userId")
       .notEmpty()
       .withMessage("User ID es requerido"),
   ],
   requestValidation,
-  getUserCart
+  getUserFavorites
 );
 
-// POST /cart - validate cart data
+// POST /favorites - validate favorite data
 router.post(
-  "/cart",
+  "/favorites",
   [
     body("userId")
       .notEmpty()
@@ -30,18 +30,14 @@ router.post(
     body("productId")
       .notEmpty()
       .withMessage("Product ID es requerido"),
-    body("quantity")
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage("Quantity debe ser un número positivo"),
   ],
   requestValidation,
-  addToCart
+  addFavorite
 );
 
-// DELETE /cart/:userId/:productId - validate IDs
+// DELETE /favorites/:userId/:productId - validate IDs
 router.delete(
-  "/cart/:userId/:productId",
+  "/favorites/:userId/:productId",
   [
     param("userId")
       .notEmpty()
@@ -51,7 +47,7 @@ router.delete(
       .withMessage("Product ID es requerido"),
   ],
   requestValidation,
-  removeFromCart
+  deleteFavorite
 );
 
 module.exports = router;

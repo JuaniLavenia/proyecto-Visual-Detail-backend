@@ -11,8 +11,8 @@ const { body } = require("express-validator");
 const {
   errorMidleware,
   requestValidation,
-} = require("../middlewares/common.middleware");
-const { loginLimiter } = require("../middlewares/rate-limiter");
+} = require("../middleware/common.middleware");
+const { loginLimiter } = require("../middleware/rate-limiter");
 
 const router = express.Router();
 
