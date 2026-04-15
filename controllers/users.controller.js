@@ -1,59 +1,30 @@
-const User = require("../models/User");
+/**
+ * Users Controller
+ * Handles HTTP requests for user operations
+ * Delegates to UserService for business logic
+ */
 
-const getUserInfo = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id, { email: 1, _id: 1 });
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
-    }
-    res.status(200).json({ message: "Info del usuario", usuario: user });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al obtener el usuario" });
-  }
-};
+const userService = require('../services/user.service');
+const { asyncHandler } = require('../middlewares/error.middleware');
+const { success } = require('../utils/response-formatter');
 
-const getUsers = async (req, res) => {
-  try {
-    const users = await User.find({}, { email: 1, _id: 1 });
-    res.status(200).json({ message: "Lista de usuarios", usuarios: users });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al obtener los usuarios" });
-  }
-};
+const getUserInfo = asyncHandler(async (req, res, next) => {
+  const user = await userService.findById(req.params.id);
+  res.json(success({ usuario: user }));
+});
 
-const updateUser = async (req, res) => {
-  try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    }).select({ email: 1, _id: 1 });
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
-    }
-    res.status(200).json({ message: "Usuario modificado", usuario: user });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al modificar el usuario" });
-  }
-};
+const getUsers = asyncHandler(async (req, res, next) => {
+  const users = await userService.findAll();
+  res.json(success({ usuarios: users }));
+});
 
-/*const deleteUser = async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
-    }
-    res.status(200).json({ message: "Usuario eliminado correctamente" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al eliminar el usuario" });
-  }
-};*/
+const updateUser = asyncHandler(async (req, res, next) => {
+  const user = await userService.update(req.params.id, req.body);
+  res.json(success({ usuario: user }, 'Usuario modificado'));
+});
 
 module.exports = {
   getUserInfo,
   getUsers,
   updateUser,
-  //deleteUser,
 };

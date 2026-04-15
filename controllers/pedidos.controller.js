@@ -1,86 +1,59 @@
-const Pedido = require("../models/Pedido");
+/**
+ * Pedidos Controller
+ * Handles HTTP requests for order operations
+ * Delegates to PedidoService for business logic
+ */
 
-const createPedido = async (req, res) => {
-  try {
-    const { productos, usuario } = req.body;
+const pedidoService = require('../services/pedido.service');
+const { asyncHandler } = require('../middlewares/error.middleware');
+const { success } = require('../utils/response-formatter');
 
-    const nuevoPedido = new Pedido({
-      usuario,
-      productos,
+const createPedido = asyncHandler(async (req, res, next) => {
+  const { productos, usuario } = req.body;
+  const pedido = await pedidoService.create({ productos, usuario });
+  res.status(201).json(success(pedido, 'Pedido creado exitosamente'));
+});
+
+const getPedidos = asyncHandler(async (req, res, next) => {
+  const { userId } = req.params;
+  const pedidos = await pedidoService.findByUser(userId);
+  res.json(success({ pedidos }));
+});
+
+const cancelPedido = asyncHandler(async (req, res, next) => {
+  const pedido = await pedidoService.findById(req.params.id);
+  
+  if (pedido.estado !== 'Pendiente') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'No se puede cancelar un pedido que no está pendiente',
+        code: 'INVALID_STATE'
+      }
     });
-
-    await nuevoPedido.save();
-
-    res.status(201).json({ mensaje: "Pedido creado exitosamente" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error interno del servidor" });
   }
-};
+  
+  const updated = await pedidoService.update(req.params.id, { estado: 'Cancelado' });
+  res.json(success({ pedido: updated }, 'Pedido cancelado'));
+});
 
-const getPedidos = async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    const orders = await Pedido.find({ usuario: userId });
-
-    res.status(200).json({ mensaje: "Lista de pedidos", pedidos: orders });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al obtener los pedidos" });
+const modificarEstadoPedido = asyncHandler(async (req, res, next) => {
+  const { nuevoEstado } = req.body;
+  
+  const estadosPermitidos = ['Pendiente', 'Completado', 'Cancelado'];
+  if (!estadosPermitidos.includes(nuevoEstado)) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Estado no válido',
+        code: 'INVALID_STATE'
+      }
+    });
   }
-};
-
-const cancelPedido = async (req, res) => {
-  try {
-    const pedido = await Pedido.findById(req.params.id);
-
-    if (!pedido) {
-      return res.status(404).json({ message: "Pedido no encontrado" });
-    }
-
-    if (pedido.estado !== "Pendiente") {
-      return res.status(400).json({
-        message: "No se puede cancelar un pedido que no está pendiente",
-      });
-    }
-
-    pedido.estado = "Cancelado";
-    await pedido.save();
-
-    res.status(201).json({ message: "Pedido modificado", pedido: pedido });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al cancelar el pedido" });
-  }
-};
-
-const modificarEstadoPedido = async (req, res) => {
-  try {
-    const pedido = await Pedido.findById(req.params.id);
-
-    if (!pedido) {
-      return res.status(404).json({ message: "Pedido no encontrado" });
-    }
-
-    const { nuevoEstado } = req.body;
-
-    const estadosPermitidos = ["Pendiente", "Completado", "Cancelado"];
-    if (!estadosPermitidos.includes(nuevoEstado)) {
-      return res.status(400).json({ message: "Estado no válido" });
-    }
-
-    pedido.estado = nuevoEstado;
-    await pedido.save();
-
-    res.status(201).json({ message: "Pedido modificado", pedido: pedido });
-  } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ message: "Error al modificar el estado del pedido" });
-  }
-};
+  
+  const pedido = await pedidoService.update(req.params.id, { estado: nuevoEstado });
+  res.json(success({ pedido }, 'Estado actualizado'));
+});
 
 module.exports = {
   createPedido,

@@ -4,17 +4,39 @@ const {
   register,
   forgotPassword,
   resetPassword,
+  refresh,
+  logout,
 } = require("../controllers/auth.controller");
-const { body, validationResult } = require("express-validator");
+const { body } = require("express-validator");
 const {
   errorMidleware,
   requestValidation,
 } = require("../middlewares/common.middleware");
+const { loginLimiter } = require("../middlewares/rate-limiter");
 
 const router = express.Router();
 
-router.post("/login", login, errorMidleware);
+// Login with rate limiting and validation
+router.post(
+  "/login",
+  loginLimiter,
+  [
+    body("email")
+      .trim()
+      .notEmpty()
+      .withMessage("El correo es requerido")
+      .isEmail()
+      .withMessage("El correo es incorrecto"),
+    body("password")
+      .notEmpty()
+      .withMessage("La contraseña es requerida"),
+  ],
+  requestValidation,
+  login,
+  errorMidleware
+);
 
+// Register with validation (existing)
 router.post(
   "/register",
   [
@@ -37,7 +59,61 @@ router.post(
   errorMidleware
 );
 
-router.post("/forgot", forgotPassword, errorMidleware);
-router.post("/reset/:id/:token", resetPassword, errorMidleware);
+// Refresh token - NO validacion tradicional, pero requiere body
+router.post(
+  "/refresh",
+  [
+    body("refreshToken")
+      .notEmpty()
+      .withMessage("Refresh token es requerido"),
+  ],
+  requestValidation,
+  refresh,
+  errorMidleware
+);
+
+// Logout
+router.post(
+  "/logout",
+  [
+    body("refreshToken")
+      .notEmpty()
+      .withMessage("Refresh token es requerido"),
+  ],
+  requestValidation,
+  logout,
+  errorMidleware
+);
+
+// Forgot password
+router.post(
+  "/forgot",
+  [
+    body("email")
+      .trim()
+      .notEmpty()
+      .withMessage("El correo es requerido")
+      .isEmail()
+      .withMessage("El correo es incorrecto"),
+  ],
+  requestValidation,
+  forgotPassword,
+  errorMidleware
+);
+
+// Reset password
+router.post(
+  "/reset/:id/:token",
+  [
+    body("password")
+      .notEmpty()
+      .withMessage("La contraseña es requerida")
+      .isLength({ min: 6, max: 12 })
+      .withMessage("La contraseña debe tener entre 6 y 12 caracteres"),
+  ],
+  requestValidation,
+  resetPassword,
+  errorMidleware
+);
 
 module.exports = router;
