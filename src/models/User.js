@@ -14,6 +14,10 @@ const userSchema = new Schema({
 		type: String,
 		required: true,
 	},
+	refreshToken: {
+		type: String,
+		default: null,
+	},
 });
 
 userSchema.pre("save", async function () {
@@ -28,8 +32,11 @@ userSchema.methods.comparePassword = async function (password) {
 	return await bcrypt.compare(password, this.password);
 };
 
-userSchema.methods.comparePassword = async function (password) {
-	return await bcrypt.compare(password, this.password);
+userSchema.methods.toJSON = function () {
+	const obj = this.toObject();
+	delete obj.password;
+	delete obj.refreshToken;
+	return obj;
 };
 
 const User = model("User", userSchema);
