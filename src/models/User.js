@@ -21,10 +21,13 @@ const userSchema = new Schema({
 });
 
 userSchema.pre("save", async function () {
-	try {
-		this.password = await bcrypt.hash(this.password, 12);
-	} catch (error) {
-		console.log(error);
+	// Only hash if password is modified (new or changed)
+	if (this.isModified('password')) {
+		try {
+			this.password = await bcrypt.hash(this.password, 12);
+		} catch (error) {
+			console.log(error);
+		}
 	}
 });
 
