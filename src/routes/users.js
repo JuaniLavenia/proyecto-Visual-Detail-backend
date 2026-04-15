@@ -4,12 +4,28 @@ const {
   getUserInfo,
   getUsers,
   updateUser,
+  updateUserRole,
 } = require("../controllers/users.controller");
 const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 
 // GET /users - get all users
 router.get("/users", getUsers);
+
+// PUT /users/:id/role - update user role (admin only)
+router.put(
+  "/users/:id/role",
+  [
+    param("id")
+      .isMongoId()
+      .withMessage("ID de usuario inválido"),
+    body("role")
+      .isIn(["minorista", "mayorista", "admin"])
+      .withMessage("Role inválido. Debe ser: minorista, mayorista o admin"),
+  ],
+  requestValidation,
+  updateUserRole
+);
 
 // GET /user/:id - validate ID parameter
 router.get(

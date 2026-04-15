@@ -11,6 +11,10 @@ const schema = new Schema({
     type: Number,
     required: true,
   },
+  precioMayorista: {
+    type: Number,
+    default: null,
+  },
   stock: {
     type: Number,
     required: true,

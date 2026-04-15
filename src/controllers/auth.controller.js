@@ -19,6 +19,7 @@ const login = asyncHandler(async (req, res, next) => {
     userId: result.user._id,
     token: result.accessToken,
     refreshToken: result.refreshToken,
+    role: result.user.role,
     user: result.user,
   });
 });
@@ -38,6 +39,7 @@ const register = asyncHandler(async (req, res, next) => {
     userId: result.user._id,
     token: result.accessToken,
     refreshToken: result.refreshToken,
+    role: result.user.role,
     user: result.user,
   });
 });

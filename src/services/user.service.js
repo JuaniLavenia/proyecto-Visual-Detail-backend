@@ -68,6 +68,23 @@ class UserService {
     }
     return true;
   }
+
+  /**
+   * Update user role
+   */
+  async updateRole(id, role) {
+    const user = await User.findByIdAndUpdate(
+      id,
+      { role },
+      { new: true, runValidators: true }
+    );
+    
+    if (!user) {
+      throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+    }
+    
+    return user.toJSON();
+  }
 }
 
 module.exports = new UserService();
