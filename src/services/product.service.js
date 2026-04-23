@@ -36,6 +36,40 @@ class ProductService {
   }
 
   /**
+   * Get product stats using MongoDB aggregation
+   */
+  async getStats() {
+    const stats = await Producto.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          inStock: {
+            $sum: { $cond: [{ $gt: ['$stock', 0] }, 1, 0] }
+          },
+          outOfStock: {
+            $sum: { $cond: [{ $lte: ['$stock', 0] }, 1, 0] }
+          },
+          totalStockValue: {
+            $sum: { $multiply: ['$price', '$stock'] }
+          },
+        }
+      }
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        totalProducts: 0,
+        inStock: 0,
+        outOfStock: 0,
+        totalStockValue: 0,
+      };
+    }
+
+    return stats[0];
+  }
+
+  /**
    * Get product by ID
    */
   async findById(id) {
@@ -50,7 +84,7 @@ class ProductService {
    * Create product
    */
   async create(productData) {
-    const allowedFields = ['name', 'description', 'image', 'category', 'price', 'stock', 'capacity', 'brand'];
+    const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
     const sanitizedData = {};
     
     for (const field of allowedFields) {
@@ -67,7 +101,7 @@ class ProductService {
    * Update product
    */
   async update(id, updateData) {
-    const allowedFields = ['name', 'description', 'image', 'category', 'price', 'stock', 'capacity', 'brand'];
+    const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
     const sanitizedData = {};
     
     for (const field of allowedFields) {
@@ -141,7 +175,7 @@ class ProductService {
     const results = [];
     
     for (const producto of products) {
-      const allowedFields = ['name', 'description', 'image', 'category', 'price', 'stock', 'capacity', 'brand'];
+      const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
       const filteredData = {};
       
       for (const field of allowedFields) {

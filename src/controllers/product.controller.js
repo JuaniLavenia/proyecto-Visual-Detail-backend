@@ -21,6 +21,8 @@ const COLUMN_MAP = {
   image: ['image', 'imagen', 'foto', 'photo', 'url_imagen', 'url_imagen', 'imagen_url'],
   // Price
   price: ['price', 'precio', 'cost', 'costo', 'valor'],
+  // Wholesale price
+  precioMayorista: ['precioMayorista', 'precio_mayorista', 'mayorista', 'wholesale', 'wholesalePrice', 'precio mayorista'],
   // Stock
   stock: ['stock', 'cantidad', 'quantity', 'disponible', 'available'],
   // Capacity
@@ -74,6 +76,11 @@ const getProducts = asyncHandler(async (req, res, next) => {
 const getProductById = asyncHandler(async (req, res, next) => {
   const producto = await productService.findById(req.params.id);
   res.json(success(producto));
+});
+
+const getStats = asyncHandler(async (req, res, next) => {
+  const stats = await productService.getStats();
+  res.json(success(stats));
 });
 
 const postProduct = asyncHandler(async (req, res, next) => {
@@ -156,6 +163,7 @@ const exportProducts = asyncHandler(async (req, res, next) => {
     descripcion: p.description || "",
     imagen: p.image || "",
     precio: p.price,
+    precioMayorista: p.precioMayorista ?? "",
     stock: p.stock,
     categoria: p.category,
     capacidad: p.capacity,
@@ -201,6 +209,7 @@ const exportProducts = asyncHandler(async (req, res, next) => {
 module.exports = {
   getProducts,
   getProductById,
+  getStats,
   postProduct,
   updateProduct,
   deleteProduct,

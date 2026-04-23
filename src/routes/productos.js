@@ -5,6 +5,7 @@ const {
   postProduct,
   getProducts,
   getProductById,
+  getStats,
   updateProduct,
   deleteProduct,
   searchFilter,
@@ -47,6 +48,9 @@ router.get(
 
 // GET /productos/export - export all products to XLSX (debe estar ANTES de :id)
 router.get("/productos/export", exportProducts);
+
+// GET /productos/stats - aggregate stats (debe estar ANTES de :id)
+router.get("/productos/stats", getStats);
 
 // GET /productos/:id - validate MongoDB ID
 router.get(
