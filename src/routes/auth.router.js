@@ -12,14 +12,12 @@ const {
   errorMidleware,
   requestValidation,
 } = require("../middleware/common.middleware");
-const { loginLimiter } = require("../middleware/rate-limiter");
 
 const router = express.Router();
 
 // Login with rate limiting and validation
 router.post(
   "/login",
-  loginLimiter,
   [
     body("email")
       .trim()

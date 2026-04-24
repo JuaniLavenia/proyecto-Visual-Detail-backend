@@ -1,6 +1,7 @@
 /**
  * Rate Limiter Middleware
- * Configurable rate limiting per endpoint
+ * Rate limiting SOLO para endpoints críticos de autenticación.
+ * No se aplica globalmente porque rompe la navegación normal de usuarios.
  */
 
 const rateLimit = require('express-rate-limit');
@@ -9,7 +10,7 @@ const config = require('../config');
 const createRateLimiter = (options = {}) => {
   const windowMs = options.windowMs || config.get('rateLimit.windowMs');
   const max = options.max || config.get('rateLimit.max');
-  
+
   return rateLimit({
     windowMs,
     max,
@@ -28,31 +29,13 @@ const createRateLimiter = (options = {}) => {
   });
 };
 
-// Default limiter for all routes
-const defaultLimiter = createRateLimiter();
-
-// Stricter limiter for auth endpoints
+// Limiter para todos los endpoints de autenticación
+// 100 requests cada 15 minutos es más que suficiente para uso legítimo
 const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100 // 100 requests per 15 min
 });
 
-// Very strict limiter for login specifically
-const loginLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 100 // 100 attempts per 15 min
-});
-
-// Limiter for static assets (images, files) - much higher limit
-const staticLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 500 // 500 requests per 15 min for images/files
-});
-
 module.exports = {
-  defaultLimiter,
-  authLimiter,
-  loginLimiter,
-  staticLimiter,
-  createRateLimiter
+  authLimiter
 };

@@ -19,14 +19,12 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// Security: Rate limiting
-const { defaultLimiter, staticLimiter } = require("./middleware/rate-limiter");
+// Security: Rate limiting - solo en endpoints críticos (auth)
+// El límite global rompe navegación normal de usuarios legítimos
+const { authLimiter } = require("./middleware/rate-limiter");
 
-// Apply static limiter BEFORE default to /public/img (images)
-app.use("/public", staticLimiter);
-
-// Apply default limiter to all other routes
-app.use(defaultLimiter);
+// Aplicar auth limiter al router de auth
+app.use("/api/auth", authLimiter);
 
 // CORS
 const cors = require("cors");
