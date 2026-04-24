@@ -5,7 +5,7 @@
  */
 
 const pedidoService = require('../services/pedido.service');
-const { asyncHandler } = require('../middleware/error.middleware');
+const { asyncHandler, AppError } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
 const createPedido = asyncHandler(async (req, res, next) => {
@@ -15,14 +15,33 @@ const createPedido = asyncHandler(async (req, res, next) => {
 });
 
 const getPedidos = asyncHandler(async (req, res, next) => {
-  const { userId } = req.params;
-  const pedidos = await pedidoService.findByUser(userId);
+  const requestedUserId = req.params.userId;
+  const currentUserId = req.userId?.toString();
+  const isAdmin = req.userRole === 'admin';
+
+  if (!isAdmin && currentUserId !== requestedUserId) {
+    throw new AppError('Solo podés ver tus propios pedidos', 403, 'FORBIDDEN');
+  }
+
+  const pedidos = await pedidoService.findByUser(requestedUserId);
   res.json(success({ pedidos }));
 });
 
 const cancelPedido = asyncHandler(async (req, res, next) => {
   const pedido = await pedidoService.findById(req.params.id);
-  
+
+  if (!pedido) {
+    throw new AppError('Pedido no encontrado', 404, 'NOT_FOUND');
+  }
+
+  const currentUserId = req.userId?.toString();
+  const isAdmin = req.userRole === 'admin';
+
+  // Solo admins o el propietario pueden cancelar
+  if (!isAdmin && pedido.usuario.toString() !== currentUserId) {
+    throw new AppError('Solo podés cancelar tus propios pedidos', 403, 'FORBIDDEN');
+  }
+
   if (pedido.estado !== 'Pendiente') {
     return res.status(400).json({
       success: false,
@@ -32,14 +51,26 @@ const cancelPedido = asyncHandler(async (req, res, next) => {
       }
     });
   }
-  
+
   const updated = await pedidoService.update(req.params.id, { estado: 'Cancelado' });
   res.json(success({ pedido: updated }, 'Pedido cancelado'));
 });
 
 const modificarEstadoPedido = asyncHandler(async (req, res, next) => {
   const { nuevoEstado } = req.body;
-  
+  const pedido = await pedidoService.findById(req.params.id);
+
+  if (!pedido) {
+    throw new AppError('Pedido no encontrado', 404, 'NOT_FOUND');
+  }
+
+  const currentUserId = req.userId?.toString();
+  const isAdmin = req.userRole === 'admin';
+
+  if (!isAdmin && pedido.usuario.toString() !== currentUserId) {
+    throw new AppError('Solo podés modificar tus propios pedidos', 403, 'FORBIDDEN');
+  }
+
   const estadosPermitidos = ['Pendiente', 'Completado', 'Cancelado'];
   if (!estadosPermitidos.includes(nuevoEstado)) {
     return res.status(400).json({
@@ -50,9 +81,9 @@ const modificarEstadoPedido = asyncHandler(async (req, res, next) => {
       }
     });
   }
-  
-  const pedido = await pedidoService.update(req.params.id, { estado: nuevoEstado });
-  res.json(success({ pedido }, 'Estado actualizado'));
+
+  const updated = await pedidoService.update(req.params.id, { estado: nuevoEstado });
+  res.json(success({ pedido: updated }, 'Estado actualizado'));
 });
 
 // ========== ADMIN CONTROLLERS ==========
@@ -64,7 +95,7 @@ const getAllPedidos = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const estado = req.query.estado || null;
-  
+
   const result = await pedidoService.findAllWithUser(page, limit, estado);
   res.json(success(result));
 });
@@ -99,7 +130,7 @@ const getRecentPedidos = asyncHandler(async (req, res, next) => {
  */
 const updatePedidoStatus = asyncHandler(async (req, res, next) => {
   const { nuevoEstado } = req.body;
-  
+
   const estadosPermitidos = ['Pendiente', 'Completado', 'Cancelado'];
   if (!estadosPermitidos.includes(nuevoEstado)) {
     return res.status(400).json({
@@ -110,7 +141,7 @@ const updatePedidoStatus = asyncHandler(async (req, res, next) => {
       }
     });
   }
-  
+
   const pedido = await pedidoService.update(req.params.id, { estado: nuevoEstado });
   res.json(success({ pedido }, 'Estado actualizado'));
 });

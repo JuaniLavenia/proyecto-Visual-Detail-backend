@@ -14,54 +14,52 @@ const {
 const { body, param, query } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
+const { authenticate } = require("../middleware/auth.middleware");
 const router = express.Router();
 
-// POST /pedidos - validate pedido data
+// ========== RUTAS PÚBLICAS / SEMI-PÚBLICAS ==========
+
+// POST /pedidos - crear pedido (guest checkout sin auth, pero con validation)
 router.post(
   "/pedidos",
   [
-    body("usuario")
-      .notEmpty()
-      .withMessage("Usuario es requerido"),
-    body("productos")
-      .isArray({ min: 1 })
-      .withMessage("Productos debe ser un array no vacío"),
+    body("usuario").notEmpty().withMessage("Usuario es requerido"),
+    body("productos").isArray({ min: 1 }).withMessage("Productos debe ser un array no vacío"),
   ],
   requestValidation,
   createPedido
 );
 
-// GET /pedidos/:userId - validate userId
+// ========== RUTAS DE USUARIO AUTENTICADO ==========
+
+// GET /pedidos/:userId - obtener pedidos del usuario
 router.get(
   "/pedidos/:userId",
+  authenticate,
   [
-    param("userId")
-      .notEmpty()
-      .withMessage("User ID es requerido"),
+    param("userId").notEmpty().withMessage("User ID es requerido"),
   ],
   requestValidation,
   getPedidos
 );
 
-// PUT /pedido/cancelar/:id - validate MongoDB ID
+// PUT /pedido/cancelar/:id - cancelar pedido propio (usuario autenticado)
 router.put(
   "/pedido/cancelar/:id",
+  authenticate,
   [
-    param("id")
-      .isMongoId()
-      .withMessage("ID de pedido inválido"),
+    param("id").isMongoId().withMessage("ID de pedido inválido"),
   ],
   requestValidation,
   cancelPedido
 );
 
-// PUT /pedido/modificar/:id - validate ID and estado
+// PUT /pedido/modificar/:id - modificar estado (usuario propietario del pedido)
 router.put(
   "/pedido/modificar/:id",
+  authenticate,
   [
-    param("id")
-      .isMongoId()
-      .withMessage("ID de pedido inválido"),
+    param("id").isMongoId().withMessage("ID de pedido inválido"),
     body("nuevoEstado")
       .isIn(["Pendiente", "Completado", "Cancelado"])
       .withMessage("Estado debe ser: Pendiente, Completado o Cancelado"),
@@ -81,6 +79,7 @@ router.get(
     query("estado").optional().isIn(["todos", "Pendiente", "Completado", "Cancelado"]).withMessage("Estado inválido"),
   ],
   requestValidation,
+  authenticate,
   isAdmin,
   getAllPedidos
 );
@@ -88,6 +87,7 @@ router.get(
 // GET /admin/pedidos/stats - Get basic dashboard statistics (admin only)
 router.get(
   "/admin/pedidos/stats",
+  authenticate,
   isAdmin,
   getPedidosStats
 );
@@ -95,6 +95,7 @@ router.get(
 // GET /admin/estadisticas - Get full dashboard statistics with stock and users (admin only)
 router.get(
   "/admin/estadisticas",
+  authenticate,
   isAdmin,
   getFullStats
 );
@@ -103,12 +104,10 @@ router.get(
 router.get(
   "/admin/pedidos/recent",
   [
-    query("limit")
-      .optional()
-      .isInt({ min: 1, max: 50 })
-      .withMessage("Limit debe ser un número entre 1 y 50"),
+    query("limit").optional().isInt({ min: 1, max: 50 }).withMessage("Limit debe ser un número entre 1 y 50"),
   ],
   requestValidation,
+  authenticate,
   isAdmin,
   getRecentPedidos
 );
@@ -117,14 +116,13 @@ router.get(
 router.put(
   "/admin/pedidos/:id/status",
   [
-    param("id")
-      .isMongoId()
-      .withMessage("ID de pedido inválido"),
+    param("id").isMongoId().withMessage("ID de pedido inválido"),
     body("nuevoEstado")
       .isIn(["Pendiente", "Completado", "Cancelado"])
       .withMessage("Estado debe ser: Pendiente, Completado o Cancelado"),
   ],
   requestValidation,
+  authenticate,
   isAdmin,
   updatePedidoStatus
 );
