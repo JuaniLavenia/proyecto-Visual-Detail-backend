@@ -14,23 +14,61 @@ const { success, paginated } = require("../utils/response-formatter");
  */
 const COLUMN_MAP = {
   // Name variations
-  name: ['name', 'nombre', 'producto', 'product', 'titulo', 'title', 'denominacion'],
+  name: [
+    "name",
+    "nombre",
+    "producto",
+    "product",
+    "titulo",
+    "title",
+    "denominacion",
+  ],
   // Description
-  description: ['description', 'descripcion', 'desc', 'detalle', 'details', 'detalles'],
+  description: [
+    "description",
+    "descripcion",
+    "desc",
+    "detalle",
+    "details",
+    "detalles",
+  ],
   // Image URL
-  image: ['image', 'imagen', 'foto', 'photo', 'url_imagen', 'url_imagen', 'imagen_url'],
+  image: [
+    "image",
+    "imagen",
+    "foto",
+    "photo",
+    "url_imagen",
+    "url_imagen",
+    "imagen_url",
+  ],
   // Price
-  price: ['price', 'precio', 'cost', 'costo', 'valor'],
+  price: ["price", "precio", "cost", "costo", "valor"],
   // Wholesale price
-  precioMayorista: ['precioMayorista', 'precio_mayorista', 'mayorista', 'wholesale', 'wholesalePrice', 'precio mayorista'],
+  precioMayorista: [
+    "precioMayorista",
+    "precio_mayorista",
+    "mayorista",
+    "wholesale",
+    "wholesalePrice",
+    "precio mayorista",
+  ],
   // Stock
-  stock: ['stock', 'cantidad', 'quantity', 'disponible', 'available'],
+  stock: ["stock", "cantidad", "quantity", "disponible", "available"],
   // Capacity
-  capacity: ['capacity', 'capacidad', 'volumen', 'volume', 'size', 'tamanio', 'tamano'],
+  capacity: [
+    "capacity",
+    "capacidad",
+    "volumen",
+    "volume",
+    "size",
+    "tamanio",
+    "tamano",
+  ],
   // Category
-  category: ['category', 'categoria', 'cat', 'tipo', 'type', 'clase'],
+  category: ["category", "categoria", "cat", "tipo", "type", "clase"],
   // Brand
-  brand: ['brand', 'marca', 'fabricante', 'manufacturer', 'marca_comercial'],
+  brand: ["brand", "marca", "fabricante", "manufacturer", "marca_comercial"],
 };
 
 /**
@@ -40,21 +78,25 @@ const COLUMN_MAP = {
  */
 const normalizeRow = (row) => {
   const normalized = {};
-  
+
   for (const [mongoField, possibleNames] of Object.entries(COLUMN_MAP)) {
     // Try to find the value using any of the possible column names
     for (const possibleName of possibleNames) {
       // Check exact match (case-insensitive)
       const exactMatch = Object.keys(row).find(
-        k => k.toLowerCase().trim() === possibleName.toLowerCase()
+        (k) => k.toLowerCase().trim() === possibleName.toLowerCase(),
       );
-      if (exactMatch && row[exactMatch] !== undefined && row[exactMatch] !== '') {
+      if (
+        exactMatch &&
+        row[exactMatch] !== undefined &&
+        row[exactMatch] !== ""
+      ) {
         normalized[mongoField] = row[exactMatch];
         break;
       }
     }
   }
-  
+
   return normalized;
 };
 
@@ -83,13 +125,21 @@ const getStats = asyncHandler(async (req, res, next) => {
   res.json(success(stats));
 });
 
+const getProductPayload = (req) => ({
+  ...req.body,
+  ...(req.file?.filename ? { image: req.file.filename } : {}),
+});
+
 const postProduct = asyncHandler(async (req, res, next) => {
-  const producto = await productService.create(req.body);
+  const producto = await productService.create(getProductPayload(req));
   res.status(201).json(success(producto, "Producto creado"));
 });
 
 const updateProduct = asyncHandler(async (req, res, next) => {
-  const producto = await productService.update(req.params.id, req.body);
+  const producto = await productService.update(
+    req.params.id,
+    getProductPayload(req),
+  );
   res.json(success(producto, "Producto actualizado"));
 });
 
@@ -124,17 +174,20 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
   const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
   // Normalize column names to MongoDB format
-  const data = rawData.map(row => normalizeRow(row));
+  const data = rawData.map((row) => normalizeRow(row));
 
   // Filter out rows that don't have at least the required fields
-  const validData = data.filter(row => row.name && (row.price !== undefined) && row.stock !== undefined);
+  const validData = data.filter(
+    (row) => row.name && row.price !== undefined && row.stock !== undefined,
+  );
 
   if (validData.length === 0) {
     return res.status(400).json(
       success({
-        message: 'No se encontraron productos válidos en el archivo. Asegúrate de tener columnas: nombre, precio, stock',
+        message:
+          "No se encontraron productos válidos en el archivo. Asegúrate de tener columnas: nombre, precio, stock",
         productos: [],
-      })
+      }),
     );
   }
 
@@ -171,9 +224,9 @@ const exportProducts = asyncHandler(async (req, res, next) => {
   }));
 
   if (data.length === 0) {
-    return res.status(400).json(
-      success({ message: 'No hay productos para exportar' })
-    );
+    return res
+      .status(400)
+      .json(success({ message: "No hay productos para exportar" }));
   }
 
   // Create workbook and worksheet

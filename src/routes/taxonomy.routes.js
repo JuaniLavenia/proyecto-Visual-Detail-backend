@@ -1,9 +1,9 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { body, param } = require('express-validator');
-const { authenticate } = require('../middleware/auth.middleware');
-const { isAdmin } = require('../middleware/admin.middleware');
-const { requestValidation } = require('../middleware/common.middleware');
+const { body, param } = require("express-validator");
+const { authenticate } = require("../middleware/auth.middleware");
+const { isAdmin } = require("../middleware/admin.middleware");
+const { requestValidation } = require("../middleware/common.middleware");
 const {
   getBrands,
   getCategories,
@@ -13,75 +13,95 @@ const {
   updateCategory,
   deleteBrand,
   deleteCategory,
-} = require('../controllers/taxonomy.controller');
+} = require("../controllers/taxonomy.controller");
 
-router.get('/brands', getBrands);
-router.get('/categories', getCategories);
+router.get("/brands", getBrands);
+router.get("/categories", getCategories);
 
 router.post(
-  '/brands',
+  "/brands",
   authenticate,
   isAdmin,
   [
-    body('name').trim().notEmpty().withMessage('El nombre es requerido'),
-    body('isActive').optional().isBoolean().withMessage('isActive debe ser booleano'),
+    body("name").trim().notEmpty().withMessage("El nombre es requerido"),
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive debe ser booleano"),
   ],
   requestValidation,
   createBrand,
 );
 
 router.post(
-  '/categories',
+  "/categories",
   authenticate,
   isAdmin,
   [
-    body('name').trim().notEmpty().withMessage('El nombre es requerido'),
-    body('isActive').optional().isBoolean().withMessage('isActive debe ser booleano'),
+    body("name").trim().notEmpty().withMessage("El nombre es requerido"),
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive debe ser booleano"),
   ],
   requestValidation,
   createCategory,
 );
 
 router.put(
-  '/brands/:id',
+  "/brands/:id",
   authenticate,
   isAdmin,
   [
-    param('id').isMongoId().withMessage('ID inválido'),
-    body('name').optional().trim().notEmpty().withMessage('El nombre es requerido'),
-    body('isActive').optional().isBoolean().withMessage('isActive debe ser booleano'),
+    param("id").isMongoId().withMessage("ID inválido"),
+    body("name")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("El nombre es requerido"),
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive debe ser booleano"),
   ],
   requestValidation,
   updateBrand,
 );
 
 router.put(
-  '/categories/:id',
+  "/categories/:id",
   authenticate,
   isAdmin,
   [
-    param('id').isMongoId().withMessage('ID inválido'),
-    body('name').optional().trim().notEmpty().withMessage('El nombre es requerido'),
-    body('isActive').optional().isBoolean().withMessage('isActive debe ser booleano'),
+    param("id").isMongoId().withMessage("ID inválido"),
+    body("name")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("El nombre es requerido"),
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive debe ser booleano"),
   ],
   requestValidation,
   updateCategory,
 );
 
 router.delete(
-  '/brands/:id',
+  "/brands/:id",
   authenticate,
   isAdmin,
-  [param('id').isMongoId().withMessage('ID inválido')],
+  [param("id").isMongoId().withMessage("ID inválido")],
   requestValidation,
   deleteBrand,
 );
 
 router.delete(
-  '/categories/:id',
+  "/categories/:id",
   authenticate,
   isAdmin,
-  [param('id').isMongoId().withMessage('ID inválido')],
+  [param("id").isMongoId().withMessage("ID inválido")],
   requestValidation,
   deleteCategory,
 );

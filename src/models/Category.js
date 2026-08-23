@@ -1,13 +1,13 @@
-const { Schema, model } = require('mongoose');
+const { Schema, model } = require("mongoose");
 
 const slugify = (value) =>
-  String(value || '')
+  String(value || "")
     .trim()
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
 const categorySchema = new Schema(
   {
@@ -26,7 +26,7 @@ const categorySchema = new Schema(
       lowercase: true,
       index: true,
       default: function defaultSlug() {
-        return slugify(this.name || '');
+        return slugify(this.name || "");
       },
     },
     isActive: {
@@ -41,7 +41,7 @@ const categorySchema = new Schema(
     },
     description: {
       type: String,
-      default: '',
+      default: "",
     },
     metadata: {
       type: Schema.Types.Mixed,
@@ -51,12 +51,12 @@ const categorySchema = new Schema(
   { timestamps: true },
 );
 
-categorySchema.pre('validate', function preValidate(next) {
+categorySchema.pre("validate", function preValidate(next) {
   if (!this.name) {
     return next();
   }
 
-  if (!this.slug || this.isModified('name')) {
+  if (!this.slug || this.isModified("name")) {
     this.slug = slugify(this.name);
   }
 
@@ -68,4 +68,4 @@ categorySchema.methods.toJSON = function toJSON() {
   return obj;
 };
 
-module.exports = model('Category', categorySchema);
+module.exports = model("Category", categorySchema);

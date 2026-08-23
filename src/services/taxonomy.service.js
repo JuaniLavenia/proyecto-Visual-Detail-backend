@@ -1,10 +1,10 @@
-const { AppError } = require('../middleware/error.middleware');
+const { AppError } = require("../middleware/error.middleware");
 
 const buildTaxonomyQuery = (Model, filters = {}) => {
   const query = {};
 
   if (filters.name) {
-    query.name = { $regex: filters.name, $options: 'i' };
+    query.name = { $regex: filters.name, $options: "i" };
   }
 
   if (filters.isActive !== undefined) {
@@ -15,17 +15,23 @@ const buildTaxonomyQuery = (Model, filters = {}) => {
 };
 
 const normalizePayload = (payload) => {
-  const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
+  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
 
   if (!name) {
-    throw new AppError('El nombre es requerido', 400, 'TAXONOMY_NAME_REQUIRED');
+    throw new AppError("El nombre es requerido", 400, "TAXONOMY_NAME_REQUIRED");
   }
 
   return {
     name,
-    description: typeof payload?.description === 'string' ? payload.description.trim() : '',
-    isActive: payload?.isActive !== undefined ? Boolean(payload.isActive) : true,
-    sortOrder: Number.isFinite(Number(payload?.sortOrder)) ? Number(payload.sortOrder) : 0,
+    description:
+      typeof payload?.description === "string"
+        ? payload.description.trim()
+        : "",
+    isActive:
+      payload?.isActive !== undefined ? Boolean(payload.isActive) : true,
+    sortOrder: Number.isFinite(Number(payload?.sortOrder))
+      ? Number(payload.sortOrder)
+      : 0,
     metadata: payload?.metadata || {},
   };
 };
@@ -50,7 +56,7 @@ class TaxonomyService {
     });
 
     if (!item) {
-      throw new AppError('Registro no encontrado', 404, 'TAXONOMY_NOT_FOUND');
+      throw new AppError("Registro no encontrado", 404, "TAXONOMY_NOT_FOUND");
     }
 
     return item;
@@ -59,7 +65,7 @@ class TaxonomyService {
   async remove(Model, id) {
     const deleted = await Model.findByIdAndDelete(id);
     if (!deleted) {
-      throw new AppError('Registro no encontrado', 404, 'TAXONOMY_NOT_FOUND');
+      throw new AppError("Registro no encontrado", 404, "TAXONOMY_NOT_FOUND");
     }
     return true;
   }

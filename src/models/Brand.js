@@ -1,13 +1,13 @@
-const { Schema, model } = require('mongoose');
+const { Schema, model } = require("mongoose");
 
 const slugify = (value) =>
-  String(value || '')
+  String(value || "")
     .trim()
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
 const brandSchema = new Schema(
   {
@@ -26,7 +26,7 @@ const brandSchema = new Schema(
       lowercase: true,
       index: true,
       default: function defaultSlug() {
-        return slugify(this.name || '');
+        return slugify(this.name || "");
       },
     },
     isActive: {
@@ -41,7 +41,7 @@ const brandSchema = new Schema(
     },
     description: {
       type: String,
-      default: '',
+      default: "",
     },
     metadata: {
       type: Schema.Types.Mixed,
@@ -51,12 +51,12 @@ const brandSchema = new Schema(
   { timestamps: true },
 );
 
-brandSchema.pre('validate', function preValidate(next) {
+brandSchema.pre("validate", function preValidate(next) {
   if (!this.name) {
     return next();
   }
 
-  if (!this.slug || this.isModified('name')) {
+  if (!this.slug || this.isModified("name")) {
     this.slug = slugify(this.name);
   }
 
@@ -68,4 +68,4 @@ brandSchema.methods.toJSON = function toJSON() {
   return obj;
 };
 
-module.exports = model('Brand', brandSchema);
+module.exports = model("Brand", brandSchema);

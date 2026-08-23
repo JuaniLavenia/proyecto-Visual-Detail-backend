@@ -4,20 +4,22 @@ const express = require("express");
 const app = express();
 
 // Security: Load config first to validate environment variables
-const config = require('./config');
+const config = require("./config");
 
 // Security: Helmet for HTTP headers (configurado para permitir imágenes cross-origin)
 const helmet = require("helmet");
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "img-src": ["'self'", "data:", "https:", "http:"],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "img-src": ["'self'", "data:", "https:", "http:"],
+      },
     },
-  },
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 
 // Security: Rate limiting - solo en endpoints críticos (auth)
 // El límite global rompe navegación normal de usuarios legítimos
@@ -41,8 +43,8 @@ app.get("/health", (req, res) => {
     success: true,
     data: {
       status: "ok",
-      timestamp: new Date().toISOString()
-    }
+      timestamp: new Date().toISOString(),
+    },
   });
 });
 
