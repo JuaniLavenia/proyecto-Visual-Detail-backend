@@ -103,8 +103,16 @@ const normalizeRow = (row) => {
 const getProducts = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
+  const { category, brand, search, sort } = req.query;
 
-  const result = await productService.findAll({ page, limit });
+  const result = await productService.findAll({
+    page,
+    limit,
+    category,
+    brand,
+    search,
+    sort,
+  });
 
   res.json(
     paginated(result.products, {

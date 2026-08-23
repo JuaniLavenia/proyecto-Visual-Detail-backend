@@ -40,6 +40,13 @@ router.get(
   [
     query("page").optional().isInt({ min: 1 }).withMessage("Page debe ser un número positivo"),
     query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit debe estar entre 1 y 100"),
+    query("category").optional().isString().trim(),
+    query("brand").optional().isString().trim(),
+    query("search").optional().isString().trim(),
+    query("sort")
+      .optional()
+      .isIn(["newest", "price-asc", "price-desc", "name-asc", "name-desc", "stock-desc"])
+      .withMessage("Sort inválido"),
   ],
   requestValidation,
   getProducts

@@ -109,11 +109,44 @@ class ProductService {
   /**
    * Get all products with pagination
    */
-  async findAll({ page = 1, limit = 10 }) {
+  async findAll({
+    page = 1,
+    limit = 10,
+    category = "",
+    brand = "",
+    search = "",
+    sort = "newest",
+  }) {
     const skip = (page - 1) * limit;
 
-    const sanitizedQuery = sanitizeFindQuery({});
-    const sanitizedSort = sanitizeSort({ createdAt: -1 });
+    const query = {};
+    const addTaxonomyFilter = (field, value) => {
+      if (!value) return;
+      const sanitizedValue = sanitizeValue(value);
+      const lookup = normalizeTaxonomyLookup(sanitizedValue);
+      const pattern = taxonomyPatternFromValue(sanitizedValue);
+      query[field] = {
+        $regex: pattern || lookup.replace(/\s+/g, "[ _-]*"),
+        $options: "i",
+      };
+    };
+
+    addTaxonomyFilter("category", category);
+    addTaxonomyFilter("brand", brand);
+    if (search) {
+      query.name = { $regex: sanitizeValue(search), $options: "i" };
+    }
+
+    const sortMap = {
+      newest: { createdAt: -1 },
+      "price-asc": { price: 1 },
+      "price-desc": { price: -1 },
+      "name-asc": { name: 1 },
+      "name-desc": { name: -1 },
+      "stock-desc": { stock: -1 },
+    };
+    const sanitizedQuery = sanitizeFindQuery(query);
+    const sanitizedSort = sanitizeSort(sortMap[sort] || sortMap.newest);
     const sanitizedProjection = sanitizeProjection({ __v: 0 });
 
     const [productos, total] = await Promise.all([
