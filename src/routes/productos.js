@@ -38,18 +38,31 @@ const uploadExcel = multer({ storage: multer.memoryStorage() });
 router.get(
   "/productos",
   [
-    query("page").optional().isInt({ min: 1 }).withMessage("Page debe ser un número positivo"),
-    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit debe estar entre 1 y 100"),
+    query("page")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("Page debe ser un número positivo"),
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Limit debe estar entre 1 y 100"),
     query("category").optional().isString().trim(),
     query("brand").optional().isString().trim(),
     query("search").optional().isString().trim(),
     query("sort")
       .optional()
-      .isIn(["newest", "price-asc", "price-desc", "name-asc", "name-desc", "stock-desc"])
+      .isIn([
+        "newest",
+        "price-asc",
+        "price-desc",
+        "name-asc",
+        "name-desc",
+        "stock-desc",
+      ])
       .withMessage("Sort inválido"),
   ],
   requestValidation,
-  getProducts
+  getProducts,
 );
 
 // GET /productos/search/:filter - búsqueda (público)
@@ -64,20 +77,10 @@ router.get("/productos/brand/:filter", brandFilter);
 // ========== RUTAS ADMIN (específicas, antes de /:id) ==========
 
 // GET /productos/stats - estadísticas (admin)
-router.get(
-  "/productos/stats",
-  authenticate,
-  isAdmin,
-  getStats
-);
+router.get("/productos/stats", authenticate, isAdmin, getStats);
 
 // GET /productos/export - exportar a XLSX (admin)
-router.get(
-  "/productos/export",
-  authenticate,
-  isAdmin,
-  exportProducts
-);
+router.get("/productos/export", authenticate, isAdmin, exportProducts);
 
 // POST /productos/bulk-upload - carga masiva desde Excel (admin)
 router.post(
@@ -85,11 +88,9 @@ router.post(
   authenticate,
   isAdmin,
   uploadExcel.single("file"),
-  [
-    body("file").notEmpty().withMessage("Archivo es requerido"),
-  ],
+  [body("file").notEmpty().withMessage("Archivo es requerido")],
   requestValidation,
-  bulkUploadProducts
+  bulkUploadProducts,
 );
 
 // POST /productos - crear producto (admin)
@@ -99,12 +100,22 @@ router.post(
   isAdmin,
   upload.single("image"),
   [
-    body("name").optional().trim().notEmpty().withMessage("El nombre no puede estar vacío"),
-    body("price").optional().isFloat({ min: 0 }).withMessage("El precio debe ser un número positivo"),
-    body("stock").optional().isInt({ min: 0 }).withMessage("El stock debe ser un número entero"),
+    body("name")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("El nombre no puede estar vacío"),
+    body("price")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("El precio debe ser un número positivo"),
+    body("stock")
+      .optional()
+      .isInt({ min: 0 })
+      .withMessage("El stock debe ser un número entero"),
   ],
   requestValidation,
-  postProduct
+  postProduct,
 );
 
 // ========== RUTAS CON PARÁMETRO :id (al final) ==========
@@ -112,11 +123,9 @@ router.post(
 // GET /productos/:id - detalle de producto (público)
 router.get(
   "/productos/:id",
-  [
-    param("id").isMongoId().withMessage("ID de producto inválido"),
-  ],
+  [param("id").isMongoId().withMessage("ID de producto inválido")],
   requestValidation,
-  getProductById
+  getProductById,
 );
 
 // PUT /productos/:id - actualizar producto (admin)
@@ -127,12 +136,22 @@ router.put(
   upload.single("image"),
   [
     param("id").isMongoId().withMessage("ID de producto inválido"),
-    body("name").optional().trim().notEmpty().withMessage("El nombre no puede estar vacío"),
-    body("price").optional().isFloat({ min: 0 }).withMessage("El precio debe ser un número positivo"),
-    body("stock").optional().isInt({ min: 0 }).withMessage("El stock debe ser un número entero"),
+    body("name")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("El nombre no puede estar vacío"),
+    body("price")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("El precio debe ser un número positivo"),
+    body("stock")
+      .optional()
+      .isInt({ min: 0 })
+      .withMessage("El stock debe ser un número entero"),
   ],
   requestValidation,
-  updateProduct
+  updateProduct,
 );
 
 // DELETE /productos/:id - eliminar producto (admin)
@@ -140,11 +159,9 @@ router.delete(
   "/productos/:id",
   authenticate,
   isAdmin,
-  [
-    param("id").isMongoId().withMessage("ID de producto inválido"),
-  ],
+  [param("id").isMongoId().withMessage("ID de producto inválido")],
   requestValidation,
-  deleteProduct
+  deleteProduct,
 );
 
 module.exports = router;
