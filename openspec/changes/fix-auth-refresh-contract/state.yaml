@@ -1,0 +1,55 @@
+change: fix-auth-refresh-contract
+repo: proyecto-Visual-Detail-backend
+cross_repo:
+  linked_change: fix-auth-refresh-contract
+  linked_repo: proyecto-Visual-Detail
+
+preflight:
+  execution_mode: interactive
+  artifact_store: openspec
+  delivery_strategy: single-pr
+  review_budget_lines: 400
+
+decisions:
+  auth_response_contract: "Opcion A: envolver login/register con success(), campo accessToken"
+  error_middleware: "Eliminar errorMidleware de auth.router.js (incluido en este change)"
+  scope_deferred:
+    - "favorites.controller.js y cart.controller.js: mismo defecto, change aparte"
+    - "verify-report.md: se agrega nota de correccion, no se reescribe"
+
+phases:
+  explore:
+    status: done
+    artifact: exploration.md
+  propose:
+    status: done
+    artifact: proposal.md
+  spec:
+    status: done
+    artifact: specs/auth-response-contract/spec.md
+  design:
+    status: done
+    artifact: design.md
+    note: >
+      Hallazgo fuera de alcance: authLimiter montado en /api/auth pero
+      auth.router.js se monta en /api con rutas /login, /register, etc.
+      El rate limiter no protege ninguna ruta de auth hoy. No se corrige
+      en este change (hardening unidad 6), anotado en el plan.
+  tasks:
+    status: done
+    artifact: tasks.md
+    forecast: "~70-100 lineas, riesgo bajo, sin chained PRs, sin size:exception"
+  apply:
+    status: done
+    artifact: apply-progress
+    tasks_completed: "10/10"
+    note: >
+      MongoDB Atlas inalcanzable en este sandbox (querySrv ECONNREFUSED,
+      limitacion conocida del entorno) - los codigos 401/409 dependientes
+      de DB se verificaron por lectura estatica, no round-trip real.
+  verify:
+    status: pending
+  archive:
+    status: pending
+
+updated: 2026-09-01
