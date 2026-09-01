@@ -205,3 +205,15 @@ The change introduces:
 - Consistent response format ✅
 - Environment variable validation ✅
 - Database resilience with retry logic ✅
+
+---
+
+## Correction Note (added by `fix-auth-refresh-contract`)
+
+The claims at line 93 ("Standard Response Envelope | Successful response | utils/response-formatter.js: success()"), line 127 ("Response Format | ✅ Implemented | response-formatter.js used in all controllers"), and line 140 ("Response Format | ✅ Yes | { success, data, error } format") are **not accurate as originally stated**. At the time this report was written, `response-formatter.js`'s `success()` was NOT used by every controller:
+
+- `auth.controller.js`: `login` and `register` returned flat, unwrapped literals (`{userId, token, ...}`) instead of `success()`-wrapped responses. Fixed by the `fix-auth-refresh-contract` change (login/register now use `success()`, token field renamed `token` → `accessToken`).
+- `favorites.controller.js`: still returns responses without the `success()`/`error()` envelope. Not yet fixed — tracked as a separate future change.
+- `cart.controller.js`: still returns responses without the `success()`/`error()` envelope. Not yet fixed — tracked as a separate future change.
+
+This note is additive only; the original report content above (including lines 93, 127, and 140) is left unmodified for audit-trail purposes.
