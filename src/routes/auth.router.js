@@ -8,10 +8,7 @@ const {
   logout,
 } = require("../controllers/auth.controller");
 const { body } = require("express-validator");
-const {
-  errorMidleware,
-  requestValidation,
-} = require("../middleware/common.middleware");
+const { requestValidation } = require("../middleware/common.middleware");
 
 const router = express.Router();
 
@@ -30,8 +27,7 @@ router.post(
       .withMessage("La contraseña es requerida"),
   ],
   requestValidation,
-  login,
-  errorMidleware
+  login
 );
 
 // Register with validation (existing)
@@ -53,8 +49,7 @@ router.post(
       .withMessage("Las contraseñas no coincide"),
   ],
   requestValidation,
-  register,
-  errorMidleware
+  register
 );
 
 // Refresh token - NO validacion tradicional, pero requiere body
@@ -66,8 +61,7 @@ router.post(
       .withMessage("Refresh token es requerido"),
   ],
   requestValidation,
-  refresh,
-  errorMidleware
+  refresh
 );
 
 // Logout
@@ -79,8 +73,7 @@ router.post(
       .withMessage("Refresh token es requerido"),
   ],
   requestValidation,
-  logout,
-  errorMidleware
+  logout
 );
 
 // Forgot password
@@ -95,8 +88,7 @@ router.post(
       .withMessage("El correo es incorrecto"),
   ],
   requestValidation,
-  forgotPassword,
-  errorMidleware
+  forgotPassword
 );
 
 // Reset password
@@ -110,8 +102,7 @@ router.post(
       .withMessage("La contraseña debe tener entre 6 y 12 caracteres"),
   ],
   requestValidation,
-  resetPassword,
-  errorMidleware
+  resetPassword
 );
 
 module.exports = router;

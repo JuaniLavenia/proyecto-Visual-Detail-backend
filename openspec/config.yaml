@@ -1,0 +1,56 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Node.js + Express 4, MongoDB via Mongoose 7, JWT auth (jsonwebtoken + bcryptjs).
+  Architecture: layered — routes -> controllers -> services -> models (src/routes, controllers, services, models).
+  Validation: express-validator; security: helmet + express-rate-limit; uploads: multer; reports: xlsx.
+  Testing: no test runner configured (no test script, no test deps).
+  Prior SDD docs exist as loose files under sdd/ (mejorar-seguridad-arquitectura-backend, roles-precios) — kept as-is, not migrated.
+
+strict_tdd: false
+
+persistence:
+  artifact_store: openspec
+  delivery_strategy: single-pr
+  review_budget_lines: 400
+
+testing:
+  test_runner: none
+  test_command: ""
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter: none
+    type_checker: none
+    formatter: none
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Flag any change touching auth/JWT or password hashing as security-sensitive
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Document architecture decisions with rationale
+    - Respect existing layering: routes -> controllers -> services -> models
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Forecast the 400-line review budget per work unit (see review workload guard)
+  apply:
+    guidelines:
+      - Follow existing code patterns (layered structure, response-formatter, query-sanitizer)
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

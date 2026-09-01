@@ -7,10 +7,4 @@ const requestValidation = (req, res, next) => {
   next();
 };
 
-const errorMidleware = (err, req, res, next) => {
-  console.log("Error", err);
-  res.status(500);
-  res.json({ message: "Internal server error" });
-};
-
-module.exports = { requestValidation, errorMidleware };
+module.exports = { requestValidation };

@@ -1,3 +1,4 @@
 node_modules
 .env
-
+bash.exe.stackdump
+.atl

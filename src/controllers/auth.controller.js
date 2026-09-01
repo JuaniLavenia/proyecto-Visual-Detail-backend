@@ -4,7 +4,6 @@
  * Delegates to AuthService for business logic
  */
 
-const { validationResult } = require("express-validator");
 const authService = require("../services/auth.service");
 const { asyncHandler } = require("../middleware/error.middleware");
 const { success } = require("../utils/response-formatter");
@@ -14,34 +13,37 @@ const login = asyncHandler(async (req, res, next) => {
 
   const result = await authService.login(email, password);
 
-  // Devolver formato compatible con frontend
-  res.json({
-    userId: result.user._id,
-    token: result.accessToken,
-    refreshToken: result.refreshToken,
-    role: result.user.role,
-    user: result.user,
-  });
+  res.json(
+    success(
+      {
+        userId: result.user._id,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        role: result.user.role,
+        user: result.user,
+      },
+      "Login exitoso"
+    )
+  );
 });
 
 const register = asyncHandler(async (req, res, next) => {
-  const validation = validationResult(req);
-  if (!validation.isEmpty()) {
-    return res.status(422).json({ errors: validation.array() });
-  }
-
   const { email, password } = req.body;
 
   const result = await authService.register(email, password);
 
-  // Devolver formato compatible con frontend
-  res.status(201).json({
-    userId: result.user._id,
-    token: result.accessToken,
-    refreshToken: result.refreshToken,
-    role: result.user.role,
-    user: result.user,
-  });
+  res.status(201).json(
+    success(
+      {
+        userId: result.user._id,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        role: result.user.role,
+        user: result.user,
+      },
+      "Registro exitoso"
+    )
+  );
 });
 
 const refresh = asyncHandler(async (req, res, next) => {
