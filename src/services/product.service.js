@@ -4,8 +4,13 @@
  */
 
 const Producto = require('../models/Product');
+const ProductBrand = require('../models/Brand');
+const ProductCategory = require('../models/Category');
 const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
+
+const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
 
 const normalizeTaxonomyLookup = (value) => {
   if (value === null || value === undefined) return '';
@@ -37,7 +42,7 @@ const taxonomyPatternFromValue = (value) => {
       const normalizedChar = char.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (char === ' ' || char === '_' || char === '-') return '[\\s_-]+';
       if (accentGroups[normalizedChar]) return accentGroups[normalizedChar];
-      return normalizedChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return escapeRegex(normalizedChar);
     })
     .join('');
 };
@@ -170,16 +175,16 @@ class ProductService {
       }
     }
 
-    const ProductBrand = require('../models/Brand');
-    const ProductCategory = require('../models/Category');
+    const [existingBrands, existingCategories] = await Promise.all([
+      sanitizedData.brand ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
+      sanitizedData.category ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
+    ]);
 
     if (sanitizedData.brand) {
-      const existingBrands = await ProductBrand.find({ isActive: true }).lean();
       sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
     }
 
     if (sanitizedData.category) {
-      const existingCategories = await ProductCategory.find({ isActive: true }).lean();
       sanitizedData.category = validateTaxonomySelection('category', sanitizedData.category, existingCategories);
     }
 
@@ -200,16 +205,16 @@ class ProductService {
       }
     }
 
-    const ProductBrand = require('../models/Brand');
-    const ProductCategory = require('../models/Category');
+    const [existingBrands, existingCategories] = await Promise.all([
+      sanitizedData.brand ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
+      sanitizedData.category ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
+    ]);
 
     if (sanitizedData.brand) {
-      const existingBrands = await ProductBrand.find({ isActive: true }).lean();
       sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
     }
 
     if (sanitizedData.category) {
-      const existingCategories = await ProductCategory.find({ isActive: true }).lean();
       sanitizedData.category = validateTaxonomySelection('category', sanitizedData.category, existingCategories);
     }
 
@@ -260,9 +265,9 @@ class ProductService {
     const categoryPattern = taxonomyPatternFromValue(sanitizedCategory);
     const query = {
       $or: [
-        { category: { $regex: sanitizedCategory, $options: 'i' } },
-        { category: { $regex: categoryPattern || categoryLookup, $options: 'i' } },
-        { category: { $regex: categoryLookup.replace(/\s+/g, '[ _-]*'), $options: 'i' } },
+        { category: { $regex: escapeRegex(sanitizedCategory), $options: 'i' } },
+        { category: { $regex: categoryPattern || escapeRegex(categoryLookup), $options: 'i' } },
+        { category: { $regex: escapeRegex(categoryLookup).replace(/\s+/g, '[ _-]*'), $options: 'i' } },
       ],
     };
     const sanitizedQuery = sanitizeFindQuery(query);
@@ -278,9 +283,9 @@ class ProductService {
     const brandPattern = taxonomyPatternFromValue(sanitizedBrand);
     const query = {
       $or: [
-        { brand: { $regex: sanitizedBrand, $options: 'i' } },
-        { brand: { $regex: brandPattern || brandLookup, $options: 'i' } },
-        { brand: { $regex: brandLookup.replace(/\s+/g, '[ _-]*'), $options: 'i' } },
+        { brand: { $regex: escapeRegex(sanitizedBrand), $options: 'i' } },
+        { brand: { $regex: brandPattern || escapeRegex(brandLookup), $options: 'i' } },
+        { brand: { $regex: escapeRegex(brandLookup).replace(/\s+/g, '[ _-]*'), $options: 'i' } },
       ],
     };
     const sanitizedQuery = sanitizeFindQuery(query);
