@@ -12,6 +12,11 @@ const { AppError } = require('../middleware/error.middleware');
 const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
 
+// Un check de truthy trata "" y 0 igual que undefined, permitiendo que
+// esos valores salteen la validacion de taxonomia. Esto exige explicitamente
+// un string no vacio.
+const hasTaxonomyValue = (value) => typeof value === 'string' && value.trim().length > 0;
+
 const normalizeTaxonomyLookup = (value) => {
   if (value === null || value === undefined) return '';
   return String(value)
@@ -168,23 +173,26 @@ class ProductService {
   async create(productData) {
     const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
     const sanitizedData = {};
-    
+
     for (const field of allowedFields) {
       if (productData[field] !== undefined) {
         sanitizedData[field] = productData[field];
       }
     }
 
+    const hasBrand = hasTaxonomyValue(sanitizedData.brand);
+    const hasCategory = hasTaxonomyValue(sanitizedData.category);
+
     const [existingBrands, existingCategories] = await Promise.all([
-      sanitizedData.brand ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
-      sanitizedData.category ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
+      hasBrand ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
+      hasCategory ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
     ]);
 
-    if (sanitizedData.brand) {
+    if (hasBrand) {
       sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
     }
 
-    if (sanitizedData.category) {
+    if (hasCategory) {
       sanitizedData.category = validateTaxonomySelection('category', sanitizedData.category, existingCategories);
     }
 
@@ -198,38 +206,60 @@ class ProductService {
   async update(id, updateData) {
     const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
     const sanitizedData = {};
-    
+
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
         sanitizedData[field] = updateData[field];
       }
     }
 
-    const [existingBrands, existingCategories] = await Promise.all([
-      sanitizedData.brand ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
-      sanitizedData.category ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
-    ]);
-
-    if (sanitizedData.brand) {
-      sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
+    const current = await Producto.findById(id).lean();
+    if (!current) {
+      throw new AppError('Producto no encontrado', 404, 'PRODUCT_NOT_FOUND');
     }
 
-    if (sanitizedData.category) {
+    // El formulario de edicion reenvia brand/category en cada submit aunque
+    // el admin solo haya tocado otro campo. Revalidar solo cuando el valor
+    // realmente cambia evita que una marca/categoria desactivada o
+    // renombrada despues de creado el producto bloquee ediciones que ni
+    // siquiera la tocan.
+    const brandChanged =
+      hasTaxonomyValue(sanitizedData.brand) &&
+      normalizeTaxonomyLookup(sanitizedData.brand) !== normalizeTaxonomyLookup(current.brand);
+    const categoryChanged =
+      hasTaxonomyValue(sanitizedData.category) &&
+      normalizeTaxonomyLookup(sanitizedData.category) !== normalizeTaxonomyLookup(current.category);
+
+    const [existingBrands, existingCategories] = await Promise.all([
+      brandChanged ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
+      categoryChanged ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
+    ]);
+
+    if (brandChanged) {
+      sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
+    } else if (hasTaxonomyValue(sanitizedData.brand)) {
+      // Mismo valor de siempre: no lo tocamos, se mantiene el guardado.
+      delete sanitizedData.brand;
+    }
+
+    if (categoryChanged) {
       sanitizedData.category = validateTaxonomySelection('category', sanitizedData.category, existingCategories);
+    } else if (hasTaxonomyValue(sanitizedData.category)) {
+      delete sanitizedData.category;
     }
 
     const sanitizedUpdate = sanitizeUpdateQuery({ $set: sanitizedData });
-    
+
     const producto = await Producto.findByIdAndUpdate(
       id,
       sanitizedUpdate,
       { new: true, runValidators: true }
     );
-    
+
     if (!producto) {
       throw new AppError('Producto no encontrado', 404, 'PRODUCT_NOT_FOUND');
     }
-    
+
     return producto;
   }
 
