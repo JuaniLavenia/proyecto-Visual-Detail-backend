@@ -7,6 +7,8 @@ const { requestValidation } = require('../middleware/common.middleware');
 const {
   getBrands,
   getCategories,
+  getAllBrands,
+  getAllCategories,
   createBrand,
   createCategory,
   updateBrand,
@@ -17,6 +19,9 @@ const {
 
 router.get('/brands', getBrands);
 router.get('/categories', getCategories);
+
+router.get('/brands/all', authenticate, isAdmin, getAllBrands);
+router.get('/categories/all', authenticate, isAdmin, getAllCategories);
 
 router.post(
   '/brands',

@@ -14,6 +14,19 @@ const getCategories = asyncHandler(async (req, res) => {
   res.json(success(items));
 });
 
+// Listados administrativos: incluyen entradas inactivas (p. ej. las que crea
+// bulkUpsert automaticamente para valores de Excel que no existian) para que
+// el admin las pueda revisar, activar o eliminar desde el panel.
+const getAllBrands = asyncHandler(async (req, res) => {
+  const items = await taxonomyService.list(Brand);
+  res.json(success(items));
+});
+
+const getAllCategories = asyncHandler(async (req, res) => {
+  const items = await taxonomyService.list(Category);
+  res.json(success(items));
+});
+
 const createBrand = asyncHandler(async (req, res) => {
   const item = await taxonomyService.create(Brand, req.body);
   res.status(201).json(success(item, 'Marca creada'));
@@ -47,6 +60,8 @@ const deleteCategory = asyncHandler(async (req, res) => {
 module.exports = {
   getBrands,
   getCategories,
+  getAllBrands,
+  getAllCategories,
   createBrand,
   createCategory,
   updateBrand,
