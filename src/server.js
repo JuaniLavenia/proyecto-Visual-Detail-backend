@@ -1,8 +1,16 @@
 require("dotenv").config();
 
+const dns = require("dns");
 const mongoose = require("mongoose");
 const app = require('./app');
 const config = require('./config');
+
+// El resolver DNS interno de Node (c-ares) a veces toma un DNS distinto al
+// que usa el resto de Windows (VPN, adaptador virtual, DNS del router sin
+// soporte SRV), y eso rompe la resolucion de mongodb+srv:// aunque la URI
+// sea correcta y herramientas como Compass conecten sin problema. Forzamos
+// un DNS publico que sí resuelve registros SRV.
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 // Database connection with retry logic
 const connectWithRetry = async () => {
