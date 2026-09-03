@@ -138,14 +138,16 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const resultados = await productService.bulkUpsert(validData);
+  const resultado = await productService.bulkUpsert(validData);
+  const exitosos = resultado.upserted + resultado.modified + resultado.matched;
 
   res.json(
     success({
-      message: `Productos cargados/reemplazados (${resultados.length} exitosos)`,
-      productos: resultados,
+      message: `Productos cargados/reemplazados (${exitosos} exitosos)`,
       total: validData.length,
-      exitosos: resultados.length,
+      exitosos,
+      nuevos: resultado.upserted,
+      actualizados: resultado.modified,
     }),
   );
 });

@@ -94,6 +94,42 @@ const validateTaxonomySelection = (type, value, catalog = []) => {
   return normalizeTaxonomyValue(normalizedValue, match);
 };
 
+// A diferencia de validateTaxonomySelection (para create/update via UI, que
+// exige que la marca/categoria ya exista y este activa), el import de Excel
+// puede traer texto libre. En vez de rechazar la fila, matchea contra
+// cualquier entrada existente (activa o no) y si no hay match crea una
+// nueva marca/categoria inactiva: el producto se importa igual, y un admin
+// revisa/corrige/activa (o borra si fue un typo) desde el panel despues.
+//
+// `catalog` se carga UNA vez antes del loop de filas en bulkUpsert (no por
+// fila): con un archivo de varias decenas de productos, un find({}) por fila
+// suma igual cantidad de round-trips secuenciales a Mongo Atlas y el import
+// termina superando el timeout del cliente. El array se muta in-memory para
+// que un typo repetido en el mismo archivo solo cree la entrada una vez.
+const resolveOrCreateTaxonomyEntry = async (Model, rawValue, catalog) => {
+  const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
+  if (!trimmed) return rawValue;
+
+  const lookupValue = normalizeTaxonomyLookup(trimmed);
+
+  const match = catalog.find((entry) => {
+    const candidateName = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const candidateSlug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
+    return (
+      normalizeTaxonomyLookup(candidateName) === lookupValue ||
+      normalizeTaxonomyLookup(candidateSlug) === lookupValue
+    );
+  });
+
+  if (match) {
+    return match.name;
+  }
+
+  const created = await Model.create({ name: trimmed, isActive: false });
+  catalog.push(created.toObject());
+  return created.name;
+};
+
 class ProductService {
   /**
    * Get all products with pagination
@@ -326,12 +362,17 @@ class ProductService {
    * Bulk create/update products
    */
   async bulkUpsert(products) {
-    const results = [];
-    
+    const [brandCatalog, categoryCatalog] = await Promise.all([
+      ProductBrand.find({}).lean(),
+      ProductCategory.find({}).lean(),
+    ]);
+
+    const operations = [];
+
     for (const producto of products) {
       const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
       const filteredData = {};
-      
+
       for (const field of allowedFields) {
         if (producto[field] !== undefined) {
           filteredData[field] = producto[field];
@@ -339,26 +380,48 @@ class ProductService {
       }
 
       const sanitizedData = sanitizeObject(filteredData);
-      
+
+      if (hasTaxonomyValue(sanitizedData.brand)) {
+        sanitizedData.brand = await resolveOrCreateTaxonomyEntry(ProductBrand, sanitizedData.brand, brandCatalog);
+      }
+
+      if (hasTaxonomyValue(sanitizedData.category)) {
+        sanitizedData.category = await resolveOrCreateTaxonomyEntry(ProductCategory, sanitizedData.category, categoryCatalog);
+      }
+
       const filtro = {
         name: sanitizedData.name,
         category: sanitizedData.category,
         capacity: sanitizedData.capacity,
         brand: sanitizedData.brand
       };
-      
+
       const sanitizedFiltro = sanitizeFindQuery(filtro);
-      
-      const actualizado = await Producto.findOneAndUpdate(
-        sanitizedFiltro,
-        sanitizedData,
-        { upsert: true, new: true }
-      );
-      
-      results.push(actualizado);
+
+      operations.push({
+        replaceOne: {
+          filter: sanitizedFiltro,
+          replacement: sanitizedData,
+          upsert: true,
+        },
+      });
     }
-    
-    return results;
+
+    if (operations.length === 0) {
+      return { total: 0, upserted: 0, modified: 0, matched: 0 };
+    }
+
+    // Un findOneAndUpdate por fila (secuencial) hacia MongoDB Atlas es lo que
+    // hacia que un archivo real (cientos de filas) superara el timeout del
+    // cliente. bulkWrite manda todas las operaciones en un solo round-trip.
+    const result = await Producto.bulkWrite(operations);
+
+    return {
+      total: operations.length,
+      upserted: result.upsertedCount,
+      modified: result.modifiedCount,
+      matched: result.matchedCount,
+    };
   }
 }
 
