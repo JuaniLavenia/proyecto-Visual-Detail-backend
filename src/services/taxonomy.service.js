@@ -1,4 +1,8 @@
 const { AppError } = require('../middleware/error.middleware');
+const Producto = require('../models/Product');
+
+const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
 
 const buildTaxonomyQuery = (Model, filters = {}) => {
   const query = {};
@@ -93,10 +97,26 @@ class TaxonomyService {
   }
 
   async remove(Model, id) {
-    const deleted = await Model.findByIdAndDelete(id);
-    if (!deleted) {
+    const item = await Model.findById(id);
+    if (!item) {
       throw new AppError('Registro no encontrado', 404, 'TAXONOMY_NOT_FOUND');
     }
+
+    const field = Model.modelName === 'Brand' ? 'brand' : 'category';
+    const inUse = await Producto.countDocuments({
+      [field]: { $regex: `^${escapeRegex(item.name)}$`, $options: 'i' },
+    });
+
+    if (inUse > 0) {
+      const label = Model.modelName === 'Brand' ? 'la marca' : 'la categoría';
+      throw new AppError(
+        `No se puede eliminar ${label} porque tiene productos asociados. Desactivala o reasigná esos productos primero.`,
+        409,
+        'TAXONOMY_IN_USE',
+      );
+    }
+
+    await Model.findByIdAndDelete(id);
     return true;
   }
 }
