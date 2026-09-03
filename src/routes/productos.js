@@ -79,7 +79,15 @@ router.post(
   isAdmin,
   uploadExcel.single("file"),
   [
-    body("file").notEmpty().withMessage("Archivo es requerido"),
+    // multer.single("file") pone el archivo en req.file, no en req.body.file
+    // - body("file") validaba el campo equivocado y rechazaba SIEMPRE,
+    // incluso con un archivo adjunto valido.
+    body("file").custom((_, { req }) => {
+      if (!req.file) {
+        throw new Error("Archivo es requerido");
+      }
+      return true;
+    }),
   ],
   requestValidation,
   bulkUploadProducts
