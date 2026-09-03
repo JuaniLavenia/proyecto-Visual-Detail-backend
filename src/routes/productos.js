@@ -19,16 +19,6 @@ const { requestValidation } = require("../middleware/common.middleware");
 const { authenticate } = require("../middleware/auth.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./public/img/productos");
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
-
-const upload = multer({ storage: storage });
 const uploadExcel = multer({ storage: multer.memoryStorage() });
 
 // ========== RUTAS PÚBLICAS ==========
@@ -98,7 +88,6 @@ router.post(
   "/productos",
   authenticate,
   isAdmin,
-  upload.single("image"),
   [
     body("name").optional().trim().notEmpty().withMessage("El nombre no puede estar vacío"),
     body("price").optional().isFloat({ min: 0 }).withMessage("El precio debe ser un número positivo"),
@@ -125,7 +114,6 @@ router.put(
   "/productos/:id",
   authenticate,
   isAdmin,
-  upload.single("image"),
   [
     param("id").isMongoId().withMessage("ID de producto inválido"),
     body("name").optional().trim().notEmpty().withMessage("El nombre no puede estar vacío"),

@@ -83,13 +83,23 @@ const getStats = asyncHandler(async (req, res, next) => {
   res.json(success(stats));
 });
 
+// El form de admin manda la URL de la imagen como "imageUrl", pero el
+// modelo/servicio usan "image". Sin este mapeo el valor nunca llega a
+// guardarse (ver src/models/Product.js).
+const mapImageUrl = (body) => {
+  if (body?.imageUrl && !body.image) {
+    return { ...body, image: body.imageUrl };
+  }
+  return body;
+};
+
 const postProduct = asyncHandler(async (req, res, next) => {
-  const producto = await productService.create(req.body);
+  const producto = await productService.create(mapImageUrl(req.body));
   res.status(201).json(success(producto, "Producto creado"));
 });
 
 const updateProduct = asyncHandler(async (req, res, next) => {
-  const producto = await productService.update(req.params.id, req.body);
+  const producto = await productService.update(req.params.id, mapImageUrl(req.body));
   res.json(success(producto, "Producto actualizado"));
 });
 
