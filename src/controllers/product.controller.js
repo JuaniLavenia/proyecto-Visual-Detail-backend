@@ -83,13 +83,23 @@ const getStats = asyncHandler(async (req, res, next) => {
   res.json(success(stats));
 });
 
+// El form de admin manda la URL de la imagen como "imageUrl", pero el
+// modelo/servicio usan "image". Sin este mapeo el valor nunca llega a
+// guardarse (ver src/models/Product.js).
+const mapImageUrl = (body) => {
+  if (body?.imageUrl && !body.image) {
+    return { ...body, image: body.imageUrl };
+  }
+  return body;
+};
+
 const postProduct = asyncHandler(async (req, res, next) => {
-  const producto = await productService.create(req.body);
+  const producto = await productService.create(mapImageUrl(req.body));
   res.status(201).json(success(producto, "Producto creado"));
 });
 
 const updateProduct = asyncHandler(async (req, res, next) => {
-  const producto = await productService.update(req.params.id, req.body);
+  const producto = await productService.update(req.params.id, mapImageUrl(req.body));
   res.json(success(producto, "Producto actualizado"));
 });
 
@@ -138,14 +148,16 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const resultados = await productService.bulkUpsert(validData);
+  const resultado = await productService.bulkUpsert(validData);
+  const exitosos = resultado.upserted + resultado.modified + resultado.matched;
 
   res.json(
     success({
-      message: `Productos cargados/reemplazados (${resultados.length} exitosos)`,
-      productos: resultados,
+      message: `Productos cargados/reemplazados (${exitosos} exitosos)`,
       total: validData.length,
-      exitosos: resultados.length,
+      exitosos,
+      nuevos: resultado.upserted,
+      actualizados: resultado.modified,
     }),
   );
 });

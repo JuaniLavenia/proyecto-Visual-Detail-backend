@@ -36,7 +36,7 @@ const errorMiddleware = (err, req, res, next) => {
     statusCode = 400;
     message = 'Invalid ID format';
     code = 'INVALID_ID';
-  } else if (err.name === 'MongoError' && err.code === 11000) {
+  } else if ((err.name === 'MongoServerError' || err.name === 'MongoError') && err.code === 11000) {
     statusCode = 409;
     message = 'Duplicate entry';
     code = 'DUPLICATE_ENTRY';

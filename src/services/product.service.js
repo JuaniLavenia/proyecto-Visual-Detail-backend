@@ -4,8 +4,131 @@
  */
 
 const Producto = require('../models/Product');
+const ProductBrand = require('../models/Brand');
+const ProductCategory = require('../models/Category');
 const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
+
+const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
+
+// Un check de truthy trata "" y 0 igual que undefined, permitiendo que
+// esos valores salteen la validacion de taxonomia. Esto exige explicitamente
+// un string no vacio.
+const hasTaxonomyValue = (value) => typeof value === 'string' && value.trim().length > 0;
+
+const normalizeTaxonomyLookup = (value) => {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+};
+
+const taxonomyPatternFromValue = (value) => {
+  const rawValue = String(value ?? '').trim();
+  if (!rawValue) return '';
+
+  const accentGroups = {
+    a: '[aáàäâ]',
+    e: '[eéèëê]',
+    i: '[iíìïî]',
+    o: '[oóòöô]',
+    u: '[uúùüû]',
+    n: '[nñ]',
+    c: '[cç]',
+  };
+
+  return Array.from(rawValue.toLowerCase())
+    .map((char) => {
+      const normalizedChar = char.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (char === ' ' || char === '_' || char === '-') return '[\\s_-]+';
+      if (accentGroups[normalizedChar]) return accentGroups[normalizedChar];
+      return escapeRegex(normalizedChar);
+    })
+    .join('');
+};
+
+const normalizeTaxonomyValue = (value, taxonomyEntry = null) => {
+  if (typeof value !== 'string') {
+    return taxonomyEntry?.name || '';
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return taxonomyEntry?.name || '';
+  }
+
+  if (taxonomyEntry && typeof taxonomyEntry.name === 'string' && taxonomyEntry.name.trim()) {
+    return taxonomyEntry.name.trim();
+  }
+
+  return trimmed;
+};
+
+const validateTaxonomySelection = (type, value, catalog = []) => {
+  const normalizedValue = typeof value === 'string' ? value.trim() : '';
+  if (!normalizedValue) {
+    throw new AppError(`${type === 'brand' ? 'La marca' : 'La categoría'} es requerida`, 400, 'TAXONOMY_REQUIRED');
+  }
+
+  const match = catalog.find((entry) => {
+    if (!entry || !entry.isActive) return false;
+    const candidateName = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const candidateSlug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
+    const lookupValue = normalizeTaxonomyLookup(normalizedValue);
+    return (
+      normalizeTaxonomyLookup(candidateName) === lookupValue ||
+      normalizeTaxonomyLookup(candidateSlug) === lookupValue
+    );
+  });
+
+  if (!match) {
+    const label = type === 'brand' ? 'Marca' : 'Categoría';
+    throw new AppError(`${label} no existe o no está activa`, 400, 'TAXONOMY_INVALID');
+  }
+
+  return normalizeTaxonomyValue(normalizedValue, match);
+};
+
+// A diferencia de validateTaxonomySelection (para create/update via UI, que
+// exige que la marca/categoria ya exista y este activa), el import de Excel
+// puede traer texto libre. En vez de rechazar la fila, matchea contra
+// cualquier entrada existente (activa o no) y si no hay match crea una
+// nueva marca/categoria inactiva: el producto se importa igual, y un admin
+// revisa/corrige/activa (o borra si fue un typo) desde el panel despues.
+//
+// `catalog` se carga UNA vez antes del loop de filas en bulkUpsert (no por
+// fila): con un archivo de varias decenas de productos, un find({}) por fila
+// suma igual cantidad de round-trips secuenciales a Mongo Atlas y el import
+// termina superando el timeout del cliente. El array se muta in-memory para
+// que un typo repetido en el mismo archivo solo cree la entrada una vez.
+const resolveOrCreateTaxonomyEntry = async (Model, rawValue, catalog) => {
+  const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
+  if (!trimmed) return rawValue;
+
+  const lookupValue = normalizeTaxonomyLookup(trimmed);
+
+  const match = catalog.find((entry) => {
+    const candidateName = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const candidateSlug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
+    return (
+      normalizeTaxonomyLookup(candidateName) === lookupValue ||
+      normalizeTaxonomyLookup(candidateSlug) === lookupValue
+    );
+  });
+
+  if (match) {
+    return match.name;
+  }
+
+  const created = await Model.create({ name: trimmed, isActive: false });
+  catalog.push(created.toObject());
+  return created.name;
+};
 
 class ProductService {
   /**
@@ -86,11 +209,27 @@ class ProductService {
   async create(productData) {
     const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
     const sanitizedData = {};
-    
+
     for (const field of allowedFields) {
       if (productData[field] !== undefined) {
         sanitizedData[field] = productData[field];
       }
+    }
+
+    const hasBrand = hasTaxonomyValue(sanitizedData.brand);
+    const hasCategory = hasTaxonomyValue(sanitizedData.category);
+
+    const [existingBrands, existingCategories] = await Promise.all([
+      hasBrand ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
+      hasCategory ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
+    ]);
+
+    if (hasBrand) {
+      sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
+    }
+
+    if (hasCategory) {
+      sanitizedData.category = validateTaxonomySelection('category', sanitizedData.category, existingCategories);
     }
 
     const producto = new Producto(sanitizedData);
@@ -103,25 +242,60 @@ class ProductService {
   async update(id, updateData) {
     const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
     const sanitizedData = {};
-    
+
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
         sanitizedData[field] = updateData[field];
       }
     }
 
+    const current = await Producto.findById(id).lean();
+    if (!current) {
+      throw new AppError('Producto no encontrado', 404, 'PRODUCT_NOT_FOUND');
+    }
+
+    // El formulario de edicion reenvia brand/category en cada submit aunque
+    // el admin solo haya tocado otro campo. Revalidar solo cuando el valor
+    // realmente cambia evita que una marca/categoria desactivada o
+    // renombrada despues de creado el producto bloquee ediciones que ni
+    // siquiera la tocan.
+    const brandChanged =
+      hasTaxonomyValue(sanitizedData.brand) &&
+      normalizeTaxonomyLookup(sanitizedData.brand) !== normalizeTaxonomyLookup(current.brand);
+    const categoryChanged =
+      hasTaxonomyValue(sanitizedData.category) &&
+      normalizeTaxonomyLookup(sanitizedData.category) !== normalizeTaxonomyLookup(current.category);
+
+    const [existingBrands, existingCategories] = await Promise.all([
+      brandChanged ? ProductBrand.find({ isActive: true }).lean() : Promise.resolve(null),
+      categoryChanged ? ProductCategory.find({ isActive: true }).lean() : Promise.resolve(null),
+    ]);
+
+    if (brandChanged) {
+      sanitizedData.brand = validateTaxonomySelection('brand', sanitizedData.brand, existingBrands);
+    } else if (hasTaxonomyValue(sanitizedData.brand)) {
+      // Mismo valor de siempre: no lo tocamos, se mantiene el guardado.
+      delete sanitizedData.brand;
+    }
+
+    if (categoryChanged) {
+      sanitizedData.category = validateTaxonomySelection('category', sanitizedData.category, existingCategories);
+    } else if (hasTaxonomyValue(sanitizedData.category)) {
+      delete sanitizedData.category;
+    }
+
     const sanitizedUpdate = sanitizeUpdateQuery({ $set: sanitizedData });
-    
+
     const producto = await Producto.findByIdAndUpdate(
       id,
       sanitizedUpdate,
       { new: true, runValidators: true }
     );
-    
+
     if (!producto) {
       throw new AppError('Producto no encontrado', 404, 'PRODUCT_NOT_FOUND');
     }
-    
+
     return producto;
   }
 
@@ -153,7 +327,15 @@ class ProductService {
    */
   async filterByCategory(category) {
     const sanitizedCategory = sanitizeValue(category);
-    const query = { category: { $regex: sanitizedCategory, $options: 'i' } };
+    const categoryLookup = normalizeTaxonomyLookup(sanitizedCategory);
+    const categoryPattern = taxonomyPatternFromValue(sanitizedCategory);
+    const query = {
+      $or: [
+        { category: { $regex: escapeRegex(sanitizedCategory), $options: 'i' } },
+        { category: { $regex: categoryPattern || escapeRegex(categoryLookup), $options: 'i' } },
+        { category: { $regex: escapeRegex(categoryLookup).replace(/\s+/g, '[ _-]*'), $options: 'i' } },
+      ],
+    };
     const sanitizedQuery = sanitizeFindQuery(query);
     return await Producto.find(sanitizedQuery);
   }
@@ -163,7 +345,15 @@ class ProductService {
    */
   async filterByBrand(brand) {
     const sanitizedBrand = sanitizeValue(brand);
-    const query = { brand: { $regex: sanitizedBrand, $options: 'i' } };
+    const brandLookup = normalizeTaxonomyLookup(sanitizedBrand);
+    const brandPattern = taxonomyPatternFromValue(sanitizedBrand);
+    const query = {
+      $or: [
+        { brand: { $regex: escapeRegex(sanitizedBrand), $options: 'i' } },
+        { brand: { $regex: brandPattern || escapeRegex(brandLookup), $options: 'i' } },
+        { brand: { $regex: escapeRegex(brandLookup).replace(/\s+/g, '[ _-]*'), $options: 'i' } },
+      ],
+    };
     const sanitizedQuery = sanitizeFindQuery(query);
     return await Producto.find(sanitizedQuery);
   }
@@ -172,12 +362,17 @@ class ProductService {
    * Bulk create/update products
    */
   async bulkUpsert(products) {
-    const results = [];
-    
+    const [brandCatalog, categoryCatalog] = await Promise.all([
+      ProductBrand.find({}).lean(),
+      ProductCategory.find({}).lean(),
+    ]);
+
+    const operations = [];
+
     for (const producto of products) {
       const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
       const filteredData = {};
-      
+
       for (const field of allowedFields) {
         if (producto[field] !== undefined) {
           filteredData[field] = producto[field];
@@ -185,26 +380,48 @@ class ProductService {
       }
 
       const sanitizedData = sanitizeObject(filteredData);
-      
+
+      if (hasTaxonomyValue(sanitizedData.brand)) {
+        sanitizedData.brand = await resolveOrCreateTaxonomyEntry(ProductBrand, sanitizedData.brand, brandCatalog);
+      }
+
+      if (hasTaxonomyValue(sanitizedData.category)) {
+        sanitizedData.category = await resolveOrCreateTaxonomyEntry(ProductCategory, sanitizedData.category, categoryCatalog);
+      }
+
       const filtro = {
         name: sanitizedData.name,
         category: sanitizedData.category,
         capacity: sanitizedData.capacity,
         brand: sanitizedData.brand
       };
-      
+
       const sanitizedFiltro = sanitizeFindQuery(filtro);
-      
-      const actualizado = await Producto.findOneAndUpdate(
-        sanitizedFiltro,
-        sanitizedData,
-        { upsert: true, new: true }
-      );
-      
-      results.push(actualizado);
+
+      operations.push({
+        replaceOne: {
+          filter: sanitizedFiltro,
+          replacement: sanitizedData,
+          upsert: true,
+        },
+      });
     }
-    
-    return results;
+
+    if (operations.length === 0) {
+      return { total: 0, upserted: 0, modified: 0, matched: 0 };
+    }
+
+    // Un findOneAndUpdate por fila (secuencial) hacia MongoDB Atlas es lo que
+    // hacia que un archivo real (cientos de filas) superara el timeout del
+    // cliente. bulkWrite manda todas las operaciones en un solo round-trip.
+    const result = await Producto.bulkWrite(operations);
+
+    return {
+      total: operations.length,
+      upserted: result.upsertedCount,
+      modified: result.modifiedCount,
+      matched: result.matchedCount,
+    };
   }
 }
 
@@ -227,4 +444,8 @@ const sanitizeObject = (obj) => {
   return sanitized;
 };
 
-module.exports = new ProductService();
+module.exports = Object.assign(new ProductService(), {
+  normalizeTaxonomyValue,
+  validateTaxonomySelection,
+  normalizeTaxonomyLookup,
+});

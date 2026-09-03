@@ -52,6 +52,7 @@ app.get("/", (req, res) => {
 
 // Routes
 app.use("/api", require("./routes/users"));
+app.use("/api", require("./routes/taxonomy.routes"));
 app.use("/api", require("./routes/productos"));
 app.use("/api", require("./routes/pedidos"));
 app.use("/api", require("./routes/favorites.routes"));

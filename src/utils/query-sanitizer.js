@@ -22,7 +22,9 @@ const sanitizeObject = (obj) => {
     const sanitized = {};
     for (const key in obj) {
       // Block potentially dangerous keys like $where, $function, etc.
-      if (key.startsWith('$') && !['$regex', '$options', '$gt', '$gte', '$lt', '$lte', '$ne', '$in', '$nin'].includes(key)) {
+      // $or/$and son estructurales (arrays de sub-queries, recursivamente
+      // sanitizadas mas abajo) - no son un vector de injection como $where.
+      if (key.startsWith('$') && !['$regex', '$options', '$gt', '$gte', '$lt', '$lte', '$ne', '$in', '$nin', '$or', '$and'].includes(key)) {
         continue; // Skip dangerous operators
       }
       sanitized[key] = sanitizeObject(obj[key]);
