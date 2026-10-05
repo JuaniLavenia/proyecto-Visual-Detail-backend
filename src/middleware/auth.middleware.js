@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 const User = require('../models/User');
 const { AppError } = require('./error.middleware');
+const { USER_INACTIVE_MESSAGE } = require('../services/auth.service');
 
 /**
  * Middleware to verify the user is authenticated
@@ -33,6 +34,11 @@ const authenticate = async (req, res, next) => {
 
     if (!user) {
       throw new AppError('Usuario no encontrado', 401, 'USER_NOT_FOUND');
+    }
+
+    // Legacy documents lack `isActive`: only an explicit `false` means inactive
+    if (user.isActive === false) {
+      throw new AppError(USER_INACTIVE_MESSAGE, 403, 'USER_INACTIVE');
     }
 
     // Attach user to request
@@ -74,7 +80,8 @@ const optionalAuth = async (req, res, next) => {
     const decoded = jwt.verify(token, config.get('jwt.secret'));
     const user = await User.findById(decoded.uid).select('-password -refreshToken');
 
-    if (user) {
+    // An inactive user is treated as anonymous (legacy: missing isActive = active)
+    if (user && user.isActive !== false) {
       req.user = user;
       req.userId = user._id;
       req.userRole = user.role;

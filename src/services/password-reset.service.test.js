@@ -93,6 +93,14 @@ test('requestPasswordReset swallows SMTP failures', async () => {
   await assert.doesNotReject(passwordResetService.requestPasswordReset('user@mail.com'));
 });
 
+test('requestPasswordReset resolves silently without mailing an inactive user', async () => {
+  fakeUser.isActive = false;
+
+  await assert.doesNotReject(passwordResetService.requestPasswordReset('user@mail.com'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sentMails.length, 0);
+});
+
 // ---------- sendResetLinkToUser (admin) ----------
 
 test('sendResetLinkToUser sends the reset mail to the user', async () => {
@@ -107,6 +115,16 @@ test('sendResetLinkToUser rejects an unknown user with 404 USER_NOT_FOUND', asyn
     statusCode: 404,
     code: 'USER_NOT_FOUND',
   });
+});
+
+test('sendResetLinkToUser rejects an inactive user with 409 USER_INACTIVE and sends nothing', async () => {
+  fakeUser.isActive = false;
+
+  await assert.rejects(passwordResetService.sendResetLinkToUser(USER_ID), {
+    statusCode: 409,
+    code: 'USER_INACTIVE',
+  });
+  assert.equal(sentMails.length, 0);
 });
 
 test('sendResetLinkToUser surfaces SMTP failures as 502 MAIL_SEND_FAILED', async () => {
@@ -170,6 +188,62 @@ test('resetPassword rejects an unknown or malformed user id', async () => {
     statusCode: 400,
     code: 'INVALID_RESET_TOKEN',
   });
+});
+
+test('resetPassword rejects an inactive user with 403 USER_INACTIVE and keeps the password', async () => {
+  const token = tokenFor(fakeUser);
+  fakeUser.isActive = false;
+
+  await assert.rejects(passwordResetService.resetPassword(USER_ID, token, 'nueva123'), {
+    statusCode: 403,
+    code: 'USER_INACTIVE',
+  });
+  assert.equal(fakeUser.password, PASSWORD_HASH);
+  assert.equal(fakeUser.saved, false);
+});
+
+test('resetPassword accepts a 72 h invite token', async () => {
+  const token = tokenFor(fakeUser, { expiresIn: '72h' });
+
+  await passwordResetService.resetPassword(USER_ID, token, 'nueva123');
+
+  assert.equal(fakeUser.password, 'nueva123');
+  assert.equal(fakeUser.saved, true);
+});
+
+// ---------- sendInviteMail (admin-created users) ----------
+
+test('sendInviteMail mails a welcome link valid for 72 h with the reset link format', async () => {
+  await passwordResetService.sendInviteMail(fakeUser);
+
+  assert.equal(sentMails.length, 1);
+  const [mail] = sentMails;
+  assert.equal(mail.to, 'user@mail.com');
+  assert.match(mail.html, /Te crearon una cuenta en Visual Detail/);
+  assert.match(mail.html, /72 horas/);
+  assert.match(mail.text, /defin[ií] tu contraseña/i);
+
+  const prefix = `${config.get('app.frontendUrl')}/reset/${USER_ID}?token=`;
+  const match = mail.html.match(/href="([^"]+)"/);
+  assert.ok(match[1].startsWith(prefix));
+  assert.ok(mail.text.includes(match[1]));
+
+  const token = decodeURIComponent(match[1].slice(prefix.length));
+  const decoded = jwt.verify(token, config.get('jwt.secret') + PASSWORD_HASH);
+  assert.equal(decoded.uid, USER_ID);
+  assert.equal(decoded.exp - decoded.iat, 72 * 60 * 60);
+
+  // The same token sets the password through the regular reset flow
+  await passwordResetService.resetPassword(USER_ID, token, 'nueva123');
+  assert.equal(fakeUser.saved, true);
+});
+
+test('sendInviteMail rejects when the mail cannot be sent', async () => {
+  mailer.sendMail = async () => {
+    throw new Error('smtp down');
+  };
+
+  await assert.rejects(passwordResetService.sendInviteMail(fakeUser));
 });
 
 test('resetPassword rejects a token issued for another user', async () => {

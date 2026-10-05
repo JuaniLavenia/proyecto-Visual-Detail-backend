@@ -13,8 +13,11 @@ const config = require('../config');
 const mailer = require('../utils/mailer');
 const { sanitizeFindQuery } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
+const { USER_INACTIVE_MESSAGE } = require('./auth.service');
 
 const RESET_TOKEN_EXPIRY = '15m';
+// Invites for admin-created users: same token design, longer window
+const INVITE_TOKEN_EXPIRY = '72h';
 
 const invalidTokenError = () =>
   new AppError('El link de recuperación es inválido', 400, 'INVALID_RESET_TOKEN');
@@ -44,13 +47,38 @@ const buildResetMail = (link) => ({
   ].join('\n'),
 });
 
+const buildInviteMail = (link) => ({
+  subject: 'Bienvenido a Visual Detail - Definí tu contraseña',
+  html: `<!DOCTYPE html>
+<html lang="es">
+  <body>
+    <h1>¡Bienvenido a Visual Detail!</h1>
+    <p>Te crearon una cuenta en Visual Detail. Para empezar a usarla, definí tu contraseña con el siguiente link. El link es válido por 72 horas.</p>
+    <p><a href="${link}">Hacé click acá para definir tu contraseña</a></p>
+    <p>Si el link expiró, pedí uno nuevo desde "¿Olvidaste tu contraseña?" o contactá a un administrador.</p>
+    <p>Saludos,<br>El equipo de Visual-Detailing</p>
+  </body>
+</html>`,
+  text: [
+    '¡Bienvenido a Visual Detail!',
+    '',
+    'Te crearon una cuenta en Visual Detail. Para empezar a usarla, definí tu contraseña con el siguiente link. El link es válido por 72 horas:',
+    link,
+    '',
+    'Si el link expiró, pedí uno nuevo desde "¿Olvidaste tu contraseña?" o contactá a un administrador.',
+    '',
+    'Saludos,',
+    'El equipo de Visual-Detailing',
+  ].join('\n'),
+});
+
 class PasswordResetService {
   /**
    * Build the frontend reset link for a user
    */
-  buildResetLink(user) {
+  buildResetLink(user, expiresIn = RESET_TOKEN_EXPIRY) {
     const token = jwt.sign({ uid: user.id }, config.get('jwt.secret') + user.password, {
-      expiresIn: RESET_TOKEN_EXPIRY,
+      expiresIn,
     });
     const baseUrl = config.get('app.frontendUrl').replace(/\/+$/, '');
     // Query param, not a path segment: the JWT contains dots and SPA dev
@@ -67,13 +95,24 @@ class PasswordResetService {
   }
 
   /**
+   * Send the welcome mail to an admin-created user so they set their own
+   * password. Uses the reset link (resetPassword applies it) with a 72 h
+   * expiry. Rejects when the mail could not be sent.
+   */
+  async sendInviteMail(user) {
+    const { subject, html, text } = buildInviteMail(this.buildResetLink(user, INVITE_TOKEN_EXPIRY));
+    await mailer.sendMail({ to: user.email, subject, html, text });
+  }
+
+  /**
    * Public "forgot password" flow.
    * Always resolves so the response does not reveal whether the e-mail exists.
    */
   async requestPasswordReset(email) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const user = await User.findOne(sanitizeFindQuery({ email: normalizedEmail }));
-    if (!user) {
+    // Inactive users get the same silent outcome as unknown e-mails
+    if (!user || user.isActive === false) {
       return;
     }
 
@@ -93,6 +132,15 @@ class PasswordResetService {
     const user = mongoose.isValidObjectId(id) ? await User.findById(id) : null;
     if (!user) {
       throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+    }
+    // Admin-only endpoint, so naming the state reveals nothing new; the link
+    // would be useless anyway because login rejects inactive users.
+    if (user.isActive === false) {
+      throw new AppError(
+        'El usuario está desactivado. Reactivalo antes de enviarle el link de recuperación',
+        409,
+        'USER_INACTIVE'
+      );
     }
 
     try {
@@ -126,6 +174,12 @@ class PasswordResetService {
 
     if (decoded.uid !== user.id) {
       throw invalidTokenError();
+    }
+
+    // A link sent before the account was deactivated must not set a password.
+    // Checked after the token, so only a valid link holder learns the status.
+    if (user.isActive === false) {
+      throw new AppError(USER_INACTIVE_MESSAGE, 403, 'USER_INACTIVE');
     }
 
     // Must go through save() so the pre-save hook hashes the password

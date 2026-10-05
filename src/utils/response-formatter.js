@@ -23,8 +23,11 @@ const error = (message, code = null, statusCode = 500) => {
   return response;
 };
 
-const paginated = (data, pagination) => {
+// `meta` adds extra top-level keys (e.g. KPI counts); it can never
+// override success/data/pagination.
+const paginated = (data, pagination, meta = {}) => {
   return {
+    ...meta,
     success: true,
     data,
     pagination
