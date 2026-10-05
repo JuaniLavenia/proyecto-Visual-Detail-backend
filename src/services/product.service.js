@@ -8,9 +8,12 @@ const ProductBrand = require('../models/Brand');
 const ProductCategory = require('../models/Category');
 const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
-
-const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
-const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
+const {
+  escapeRegex,
+  buildSort,
+  buildProductFilter,
+  resolveTaxonomyName,
+} = require('./product-query');
 
 // Un check de truthy trata "" y 0 igual que undefined, permitiendo que
 // esos valores salteen la validacion de taxonomia. Esto exige explicitamente
@@ -132,22 +135,38 @@ const resolveOrCreateTaxonomyEntry = async (Model, rawValue, catalog) => {
 
 class ProductService {
   /**
-   * Get all products with pagination
+   * Get all products with pagination.
+   * brand/category accept a slug or a name and are resolved to the
+   * canonical name stored on Product; search matches name (escaped,
+   * case-insensitive); sort is one of the fixed keys in product-query.
    */
-  async findAll({ page = 1, limit = 10 }) {
+  async findAll({ page = 1, limit = 10, brand, category, search, sort } = {}) {
     const skip = (page - 1) * limit;
-    
-    const sanitizedQuery = sanitizeFindQuery({});
-    const sanitizedSort = sanitizeSort({ createdAt: -1 });
+
+    const [brandName, categoryName] = await Promise.all([
+      brand ? resolveTaxonomyName(ProductBrand, brand) : Promise.resolve(undefined),
+      category ? resolveTaxonomyName(ProductCategory, category) : Promise.resolve(undefined),
+    ]);
+
+    // A filter that does not match any brand/category cannot match any
+    // product: answer with an empty page instead of an error.
+    if (brandName === null || categoryName === null) {
+      return { products: [], currentPage: page, totalPages: 0, totalProducts: 0 };
+    }
+
+    // Built from fixed keys and checked strings; see buildProductFilter for
+    // why it skips sanitizeFindQuery.
+    const filter = buildProductFilter({ brand: brandName, category: categoryName, search });
+    const sanitizedSort = sanitizeSort(buildSort(sort));
     const sanitizedProjection = sanitizeProjection({ __v: 0 });
-    
+
     const [productos, total] = await Promise.all([
-      Producto.find(sanitizedQuery)
+      Producto.find(filter)
         .select(sanitizedProjection)
         .sort(sanitizedSort)
         .skip(skip)
         .limit(limit),
-      Producto.countDocuments(sanitizedQuery)
+      Producto.countDocuments(filter)
     ]);
 
     return {

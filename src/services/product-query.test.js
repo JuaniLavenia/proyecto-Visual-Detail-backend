@@ -1,7 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { findTaxonomyName, resolveTaxonomyName } = require('./product-query');
+const {
+  findTaxonomyName,
+  resolveTaxonomyName,
+  escapeRegex,
+  buildSort,
+  buildProductFilter,
+} = require('./product-query');
 
 const catalog = [
   { name: 'Toxic Shine', slug: 'toxic-shine' },
@@ -66,4 +72,49 @@ test('resolveTaxonomyName skips the database for an empty value', async () => {
   const Model = stubModel(catalog);
   assert.equal(await resolveTaxonomyName(Model, ''), null);
   assert.equal(Model.calls.length, 0);
+});
+
+test('escapeRegex turns regex metacharacters into literals', () => {
+  const input = 'a.b*(c)+?[d]{1}|^$\\';
+  const pattern = new RegExp(escapeRegex(input));
+  assert.ok(pattern.test(`x${input}y`));
+  assert.ok(!new RegExp(escapeRegex('a.b')).test('axb'));
+  assert.equal(escapeRegex('(a+)+$'), '\\(a\\+\\)\\+\\$');
+});
+
+test('buildSort maps price sorts with an _id tie-breaker', () => {
+  assert.deepEqual(buildSort('price_asc'), { price: 1, _id: 1 });
+  assert.deepEqual(buildSort('price_desc'), { price: -1, _id: -1 });
+});
+
+test('buildSort defaults to newest first by _id for missing or unknown values', () => {
+  assert.deepEqual(buildSort(undefined), { _id: -1 });
+  assert.deepEqual(buildSort('createdAt'), { _id: -1 });
+  assert.deepEqual(buildSort('__proto__'), { _id: -1 });
+});
+
+test('buildSort returns a fresh object each call', () => {
+  buildSort('price_asc').price = 99;
+  assert.deepEqual(buildSort('price_asc'), { price: 1, _id: 1 });
+});
+
+test('buildProductFilter ANDs brand, category and escaped search', () => {
+  assert.deepEqual(
+    buildProductFilter({ brand: 'Toxic Shine', category: 'Ceras', search: ' shampoo (2L) ' }),
+    {
+      brand: 'Toxic Shine',
+      category: 'Ceras',
+      name: { $regex: 'shampoo \\(2L\\)', $options: 'i' },
+    },
+  );
+});
+
+test('buildProductFilter omits empty filters', () => {
+  assert.deepEqual(buildProductFilter({}), {});
+  assert.deepEqual(buildProductFilter({ brand: null, category: '', search: '   ' }), {});
+  assert.deepEqual(buildProductFilter({ category: 'Ceras' }), { category: 'Ceras' });
+});
+
+test('buildProductFilter ignores non-string values', () => {
+  assert.deepEqual(buildProductFilter({ brand: { $ne: null }, search: ['a'] }), {});
 });
