@@ -61,8 +61,10 @@ const normalizeRow = (row) => {
 const getProducts = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
+  // Already validated (strings, trimmed, length-capped) by the route.
+  const { brand, category, search, sort } = req.query;
 
-  const result = await productService.findAll({ page, limit });
+  const result = await productService.findAll({ page, limit, brand, category, search, sort });
 
   res.json(
     paginated(result.products, {
