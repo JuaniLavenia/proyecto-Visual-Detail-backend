@@ -5,6 +5,7 @@
  */
 
 const userService = require('../services/user.service');
+const passwordResetService = require('../services/password-reset.service');
 const { asyncHandler, AppError } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
@@ -74,9 +75,16 @@ const updateUserRole = asyncHandler(async (req, res, next) => {
   res.json(success({ usuario: user }, 'Rol actualizado'));
 });
 
+const sendPasswordResetLink = asyncHandler(async (req, res, next) => {
+  // isAdmin middleware ya valida que el que hace la request es admin
+  await passwordResetService.sendResetLinkToUser(req.params.id);
+  res.json(success(null, 'Link de recuperación enviado'));
+});
+
 module.exports = {
   getUserInfo,
   getUsers,
   updateUser,
   updateUserRole,
+  sendPasswordResetLink,
 };

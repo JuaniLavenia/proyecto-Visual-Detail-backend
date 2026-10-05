@@ -2,7 +2,9 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 const userService = require('../services/user.service');
-const { updateUser } = require('./users.controller');
+const passwordResetService = require('../services/password-reset.service');
+const { AppError } = require('../middleware/error.middleware');
+const { updateUser, sendPasswordResetLink } = require('./users.controller');
 
 let receivedUpdates;
 
@@ -31,6 +33,36 @@ test('updateUser ignores role and password sent by the user', async () => {
   await run(selfRequest({ email: 'new@mail.com', role: 'admin', password: 'plain', refreshToken: 'x' }));
 
   assert.deepEqual(receivedUpdates, { email: 'new@mail.com' });
+});
+
+test('sendPasswordResetLink sends the reset link for the requested user', async () => {
+  let receivedId;
+  passwordResetService.sendResetLinkToUser = async (id) => {
+    receivedId = id;
+  };
+
+  const result = await new Promise((resolve) => {
+    const res = { json: (body) => resolve({ body }) };
+    sendPasswordResetLink({ params: { id: 'user-2' } }, res, (err) => resolve({ err }));
+  });
+
+  assert.equal(receivedId, 'user-2');
+  assert.equal(result.body?.success, true);
+  assert.ok(result.body?.message);
+});
+
+test('sendPasswordResetLink forwards service errors', async () => {
+  passwordResetService.sendResetLinkToUser = async () => {
+    throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+  };
+
+  const { err } = await new Promise((resolve) => {
+    const res = { json: (body) => resolve({ body }) };
+    sendPasswordResetLink({ params: { id: 'missing' } }, res, (e) => resolve({ err: e }));
+  });
+
+  assert.equal(err?.statusCode, 404);
+  assert.equal(err?.code, 'USER_NOT_FOUND');
 });
 
 test('updateUser rejects a request with no editable fields', async () => {
