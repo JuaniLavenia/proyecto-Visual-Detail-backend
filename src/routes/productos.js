@@ -8,9 +8,6 @@ const {
   getStats,
   updateProduct,
   deleteProduct,
-  searchFilter,
-  categoryFilter,
-  brandFilter,
   bulkUploadProducts,
   exportProducts,
 } = require("../controllers/product.controller");
@@ -32,15 +29,6 @@ router.get(
   requestValidation,
   getProducts
 );
-
-// GET /productos/search/:filter - búsqueda (público)
-router.get("/productos/search/:filter", searchFilter);
-
-// GET /productos/category/:filter - filtrar por categoría (público)
-router.get("/productos/category/:filter", categoryFilter);
-
-// GET /productos/brand/:filter - filtrar por marca (público)
-router.get("/productos/brand/:filter", brandFilter);
 
 // ========== RUTAS ADMIN (específicas, antes de /:id) ==========
 

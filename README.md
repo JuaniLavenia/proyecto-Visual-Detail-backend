@@ -116,15 +116,12 @@ Todas las respuestas siguen un formato estándar:
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/api/productos` | Listado con paginación |
+| `GET` | `/api/productos` | Listado paginado con filtros combinables (`brand`, `category`, `search`, `sort`, `page`, `limit`) |
 | `GET` | `/api/productos/stats` | Estadísticas agregadas (total, en stock, sin stock, valor total) |
 | `GET` | `/api/productos/:id` | Detalle de producto |
 | `POST` | `/api/productos` | Crear producto (multipart) |
 | `PUT` | `/api/productos/:id` | Actualizar producto |
 | `DELETE` | `/api/productos/:id` | Eliminar producto |
-| `GET` | `/api/productos/search/:filter` | Buscar por nombre |
-| `GET` | `/api/productos/category/:filter` | Filtrar por categoría |
-| `GET` | `/api/productos/brand/:filter` | Filtrar por marca |
 | `GET` | `/api/productos/export` | Exportar a XLSX |
 | `POST` | `/api/productos/bulk-upload` | Importar desde Excel |
 

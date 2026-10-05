@@ -9,7 +9,6 @@ const ProductCategory = require('../models/Category');
 const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 const {
-  escapeRegex,
   buildSort,
   buildProductFilter,
   resolveTaxonomyName,
@@ -29,30 +28,6 @@ const normalizeTaxonomyLookup = (value) => {
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .toLowerCase();
-};
-
-const taxonomyPatternFromValue = (value) => {
-  const rawValue = String(value ?? '').trim();
-  if (!rawValue) return '';
-
-  const accentGroups = {
-    a: '[aáàäâ]',
-    e: '[eéèëê]',
-    i: '[iíìïî]',
-    o: '[oóòöô]',
-    u: '[uúùüû]',
-    n: '[nñ]',
-    c: '[cç]',
-  };
-
-  return Array.from(rawValue.toLowerCase())
-    .map((char) => {
-      const normalizedChar = char.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (char === ' ' || char === '_' || char === '-') return '[\\s_-]+';
-      if (accentGroups[normalizedChar]) return accentGroups[normalizedChar];
-      return escapeRegex(normalizedChar);
-    })
-    .join('');
 };
 
 const normalizeTaxonomyValue = (value, taxonomyEntry = null) => {
@@ -330,51 +305,6 @@ class ProductService {
   }
 
   /**
-   * Search products by name (legacy /productos/search/:filter).
-   * Shares the escaped filter builder with findAll so the term is matched
-   * literally instead of being interpreted as a regex.
-   */
-  async search(filter) {
-    return await Producto.find(buildProductFilter({ search: filter }));
-  }
-
-  /**
-   * Filter by category
-   */
-  async filterByCategory(category) {
-    const sanitizedCategory = sanitizeValue(category);
-    const categoryLookup = normalizeTaxonomyLookup(sanitizedCategory);
-    const categoryPattern = taxonomyPatternFromValue(sanitizedCategory);
-    const query = {
-      $or: [
-        { category: { $regex: escapeRegex(sanitizedCategory), $options: 'i' } },
-        { category: { $regex: categoryPattern || escapeRegex(categoryLookup), $options: 'i' } },
-        { category: { $regex: escapeRegex(categoryLookup).replace(/\s+/g, '[ _-]*'), $options: 'i' } },
-      ],
-    };
-    const sanitizedQuery = sanitizeFindQuery(query);
-    return await Producto.find(sanitizedQuery);
-  }
-
-  /**
-   * Filter by brand
-   */
-  async filterByBrand(brand) {
-    const sanitizedBrand = sanitizeValue(brand);
-    const brandLookup = normalizeTaxonomyLookup(sanitizedBrand);
-    const brandPattern = taxonomyPatternFromValue(sanitizedBrand);
-    const query = {
-      $or: [
-        { brand: { $regex: escapeRegex(sanitizedBrand), $options: 'i' } },
-        { brand: { $regex: brandPattern || escapeRegex(brandLookup), $options: 'i' } },
-        { brand: { $regex: escapeRegex(brandLookup).replace(/\s+/g, '[ _-]*'), $options: 'i' } },
-      ],
-    };
-    const sanitizedQuery = sanitizeFindQuery(query);
-    return await Producto.find(sanitizedQuery);
-  }
-
-  /**
    * Bulk create/update products
    */
   async bulkUpsert(products) {
@@ -442,11 +372,6 @@ class ProductService {
 }
 
 // Helper functions at module level
-const sanitizeValue = (value) => {
-  if (typeof value !== 'string') return value;
-  return value.replace(/[\$\{\}]/g, '');
-};
-
 const sanitizeObject = (obj) => {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) return obj.map(item => sanitizeObject(item));

@@ -110,24 +110,6 @@ const deleteProduct = asyncHandler(async (req, res, next) => {
   res.json(success(null, "Producto eliminado"));
 });
 
-const searchFilter = asyncHandler(async (req, res, next) => {
-  const { filter } = req.params;
-  const productos = await productService.search(filter);
-  res.json(success(productos));
-});
-
-const categoryFilter = asyncHandler(async (req, res, next) => {
-  const { filter } = req.params;
-  const productos = await productService.filterByCategory(filter);
-  res.json(success(productos));
-});
-
-const brandFilter = asyncHandler(async (req, res, next) => {
-  const { filter } = req.params;
-  const productos = await productService.filterByBrand(filter);
-  res.json(success(productos));
-});
-
 const bulkUploadProducts = asyncHandler(async (req, res, next) => {
   const XLSX = require("xlsx");
   const buffer = req.file.buffer;
@@ -227,9 +209,6 @@ module.exports = {
   postProduct,
   updateProduct,
   deleteProduct,
-  searchFilter,
-  categoryFilter,
-  brandFilter,
   bulkUploadProducts,
   exportProducts,
 };
