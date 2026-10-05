@@ -7,7 +7,7 @@ const {
   refresh,
   logout,
 } = require("../controllers/auth.controller");
-const { body } = require("express-validator");
+const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 
 const router = express.Router();
@@ -95,6 +95,8 @@ router.post(
 router.post(
   "/reset/:id/:token",
   [
+    param("id").isMongoId().withMessage("El link de recuperación es inválido"),
+    param("token").notEmpty().withMessage("El link de recuperación es inválido"),
     body("password")
       .notEmpty()
       .withMessage("La contraseña es requerida")

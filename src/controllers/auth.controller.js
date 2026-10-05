@@ -5,6 +5,7 @@
  */
 
 const authService = require("../services/auth.service");
+const passwordResetService = require("../services/password-reset.service");
 const { asyncHandler } = require("../middleware/error.middleware");
 const { success } = require("../utils/response-formatter");
 
@@ -62,94 +63,28 @@ const logout = asyncHandler(async (req, res, next) => {
   res.json(success(null, "Logout exitoso"));
 });
 
-const forgotPassword = async (req, res) => {
+const forgotPassword = asyncHandler(async (req, res, next) => {
   const { email } = req.body;
-  const nodemailer = require("nodemailer");
 
-  try {
-    const user = await require("../models/User").findOne({ email });
-    if (!user) {
-      return res.status(422).json({ error: "No existe el usuario" });
-    }
+  // Same response whether or not the e-mail exists (no account enumeration)
+  await passwordResetService.requestPasswordReset(email);
 
-    const secret = process.env.JWT_SECRET + user.password;
-    const jwt = require("jsonwebtoken");
-    const token = jwt.sign({ uid: user.id }, secret, { expiresIn: "15m" });
+  res.json(
+    success(
+      null,
+      "Si el email está registrado, te enviamos un link para restablecer tu contraseña."
+    )
+  );
+});
 
-    var transporter = nodemailer.createTransport({
-      host: "sandbox.smtp.mailtrap.io",
-      port: 2525,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    const link = `https://visual-detailing.vercel.app/reset/${user.id}?token=${token}`;
-
-    let emailOptions = {
-      from: "forgot.password@visualdetailing.com",
-      to: user.email,
-      subject: "Restablecer Contraseña - Visual-Detailing",
-      html: `
-      <h1> ¿Olvidaste tu contraseña? </h1>
-      <p> ¡No te preocupes! Te enviamos un link para que puedas acceder a tu cuenta; el mismo será válido por sólo 15 minutos. </br>
-      <a  data-bs-toggle="modal"
-      data-bs-target="#olvideContrasenaForm" href= "${link}"> Hacé click acá para restablecer tu contraseña. </a>
-      </br>
-      ¡Gracias por utilizar nuestros servicios!
-      </br>
-      Saludos,
-      </br>
-      El equipo de Visual-Detailing.</br>
-      `,
-    };
-
-    transporter.sendMail(emailOptions, function (err, data) {
-      if (err) {
-        return res.status(500).json({ err });
-      }
-      return res.json({
-        userId: user.id,
-        send: true,
-      });
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
-  }
-};
-
-const resetPassword = async (req, res) => {
+const resetPassword = asyncHandler(async (req, res, next) => {
   const { id, token } = req.params;
   const { password } = req.body;
-  const jwt = require("jsonwebtoken");
 
-  try {
-    const user = await require("../models/User").findById(id);
-    if (!user) {
-      return res.status(422).json({ error: "El usuario no existe" });
-    }
-    const secret = process.env.JWT_SECRET + user.password;
-    const verified = jwt.verify(token, secret);
-    if (verified) {
-      user.password = password;
-      await user.save();
-    }
+  await passwordResetService.resetPassword(id, token, password);
 
-    res.json({
-      userId: user.id,
-      verified,
-    });
-  } catch (error) {
-    if (error.message == "jwt expired") {
-      return res.status(500).json({ error: "Token expirado" });
-    }
-    if (error.message == "invalid token") {
-      return res.status(500).json({ error: "Token inválido" });
-    }
-    res.status(500).json({ error: "Server error" });
-  }
-};
+  res.json(success(null, "Contraseña restablecida. Ya podés iniciar sesión."));
+});
 
 module.exports = {
   login,
