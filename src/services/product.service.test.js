@@ -84,3 +84,14 @@ test('findAll returns an empty page for an unknown brand without querying produc
   assert.equal(received.find.length, 0);
   assert.equal(received.count.length, 0);
 });
+
+test('legacy search matches the term literally (regex metacharacters escaped)', async () => {
+  Producto.find = async (filter) => {
+    received.find.push(filter);
+    return [];
+  };
+
+  await productService.search('(a+)+$ 1.5L');
+
+  assert.deepEqual(received.find, [{ name: { $regex: '\\(a\\+\\)\\+\\$ 1\\.5L', $options: 'i' } }]);
+});

@@ -330,15 +330,12 @@ class ProductService {
   }
 
   /**
-   * Search products by name
+   * Search products by name (legacy /productos/search/:filter).
+   * Shares the escaped filter builder with findAll so the term is matched
+   * literally instead of being interpreted as a regex.
    */
   async search(filter) {
-    const sanitizedFilter = sanitizeValue(filter);
-    const query = {
-      name: { $regex: sanitizedFilter, $options: 'i' }
-    };
-    const sanitizedQuery = sanitizeFindQuery(query);
-    return await Producto.find(sanitizedQuery);
+    return await Producto.find(buildProductFilter({ search: filter }));
   }
 
   /**
