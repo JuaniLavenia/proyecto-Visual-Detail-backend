@@ -53,7 +53,9 @@ class PasswordResetService {
       expiresIn: RESET_TOKEN_EXPIRY,
     });
     const baseUrl = config.get('app.frontendUrl').replace(/\/+$/, '');
-    return `${baseUrl}/reset/${user.id}/${token}`;
+    // Query param, not a path segment: the JWT contains dots and SPA dev
+    // servers treat a dotted last segment as a static file (404).
+    return `${baseUrl}/reset/${user.id}?token=${encodeURIComponent(token)}`;
   }
 
   /**

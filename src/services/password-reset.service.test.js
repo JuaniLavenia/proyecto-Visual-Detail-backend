@@ -65,13 +65,15 @@ test('requestPasswordReset sends a mail with a frontend reset link for a known e
   assert.ok(mail.subject);
   assert.ok(mail.text);
 
-  const prefix = `${config.get('app.frontendUrl')}/reset/${USER_ID}/`;
+  // Token travels as a query param: JWTs contain dots, and SPA dev servers
+  // (Vite) treat a dotted last path segment as a static file and return 404.
+  const prefix = `${config.get('app.frontendUrl')}/reset/${USER_ID}?token=`;
   const match = mail.html.match(/href="([^"]+)"/);
   assert.ok(match, 'html contains a link');
   assert.ok(match[1].startsWith(prefix));
   assert.ok(mail.text.includes(match[1]));
 
-  const token = match[1].slice(prefix.length);
+  const token = decodeURIComponent(match[1].slice(prefix.length));
   const decoded = jwt.verify(token, config.get('jwt.secret') + PASSWORD_HASH);
   assert.equal(decoded.uid, USER_ID);
   assert.ok(decoded.exp - decoded.iat <= 15 * 60);
