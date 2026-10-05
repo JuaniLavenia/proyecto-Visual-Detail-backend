@@ -1,13 +1,29 @@
-const { test, beforeEach } = require('node:test');
+const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 const userService = require('../services/user.service');
 const passwordResetService = require('../services/password-reset.service');
 const { AppError } = require('../middleware/error.middleware');
-const { updateUser, sendPasswordResetLink, getUsers } = require('./users.controller');
+const {
+  updateUser,
+  sendPasswordResetLink,
+  getUsers,
+  createUser,
+  adminUpdateUser,
+  deleteUser,
+  updateUserRole,
+} = require('./users.controller');
 const usersRouter = require('../routes/users');
 const { authenticate } = require('../middleware/auth.middleware');
 const { isAdmin } = require('../middleware/admin.middleware');
+
+// Every service method a test overwrites, restored after each test
+const STUBBED_USER_SERVICE = ['update', 'list', 'getCounts', 'createByAdmin', 'updateByAdmin', 'deleteByAdmin', 'updateRole'];
+const STUBBED_RESET_SERVICE = ['sendResetLinkToUser', 'sendInviteMail'];
+const snapshot = (target, names) => Object.fromEntries(names.map((name) => [name, target[name]]));
+const originalUserService = snapshot(userService, STUBBED_USER_SERVICE);
+const originalResetService = snapshot(passwordResetService, STUBBED_RESET_SERVICE);
+const originalConsoleError = console.error;
 
 let receivedUpdates;
 
@@ -18,6 +34,30 @@ beforeEach(() => {
     return { _id, ...updates };
   };
 });
+
+afterEach(() => {
+  Object.assign(userService, originalUserService);
+  Object.assign(passwordResetService, originalResetService);
+  console.error = originalConsoleError;
+});
+
+// Runs a controller and resolves with the status, body or forwarded error
+const call = (handler, req) =>
+  new Promise((resolve) => {
+    const res = {
+      statusCode: 200,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body) {
+        resolve({ status: this.statusCode, body });
+      },
+    };
+    handler(req, res, (err) => resolve({ err }));
+  });
+
+const ADMIN_ID = 'admin-1';
 
 const run = (req) =>
   new Promise((resolve) => {
@@ -142,6 +182,165 @@ test('GET /users is wired behind authenticate and isAdmin', () => {
   assert.equal(handlers[0], authenticate);
   assert.equal(handlers[1], isAdmin);
   assert.ok(handlers.length > 3, 'query validation runs before the controller');
+});
+
+for (const [method, path, controller] of [
+  ['post', '/users', createUser],
+  ['patch', '/users/:id', adminUpdateUser],
+  ['delete', '/users/:id', deleteUser],
+  ['put', '/users/:id/role', updateUserRole],
+]) {
+  test(`${method.toUpperCase()} ${path} is wired behind authenticate and isAdmin with validation`, () => {
+    const handlers = findRouteHandlers(method, path);
+
+    assert.equal(handlers[0], authenticate);
+    assert.equal(handlers[1], isAdmin);
+    assert.ok(handlers.length > 3, 'validation runs before the controller');
+    assert.equal(handlers[handlers.length - 1], controller);
+  });
+}
+
+// ---------- createUser ----------
+
+const fakeCreatedUser = (fields) => ({
+  ...fields,
+  password: 'hash',
+  toJSON() {
+    return { _id: 'new-1', ...fields };
+  },
+});
+
+test('createUser creates the user, sends the invite and answers 201 with inviteSent true', async () => {
+  let receivedData;
+  let invited;
+  userService.createByAdmin = async (data) => {
+    receivedData = data;
+    return fakeCreatedUser(data);
+  };
+  passwordResetService.sendInviteMail = async (user) => {
+    invited = user;
+  };
+
+  const result = await call(createUser, {
+    userId: ADMIN_ID,
+    body: { email: 'ana@mail.com', name: 'Ana', role: 'mayorista', password: 'ignored', isActive: false },
+  });
+
+  assert.equal(result.err, undefined);
+  assert.deepEqual(receivedData, { email: 'ana@mail.com', name: 'Ana', role: 'mayorista' });
+  assert.equal(invited.email, 'ana@mail.com');
+  assert.equal(result.status, 201);
+  assert.equal(result.body.success, true);
+  assert.equal(result.body.data.inviteSent, true);
+  assert.deepEqual(result.body.data.user, { _id: 'new-1', email: 'ana@mail.com', name: 'Ana', role: 'mayorista' });
+  assert.equal(result.body.data.user.password, undefined);
+});
+
+test('createUser keeps the user and answers 201 with inviteSent false when the mail fails', async () => {
+  userService.createByAdmin = async (data) => fakeCreatedUser(data);
+  passwordResetService.sendInviteMail = async () => {
+    throw new Error('smtp down');
+  };
+  console.error = () => {};
+
+  const result = await call(createUser, { userId: ADMIN_ID, body: { email: 'ana@mail.com' } });
+
+  assert.equal(result.err, undefined);
+  assert.equal(result.status, 201);
+  assert.equal(result.body.data.inviteSent, false);
+  assert.equal(result.body.data.user.email, 'ana@mail.com');
+});
+
+test('createUser forwards 409 EMAIL_IN_USE without sending a mail', async () => {
+  let mailed = false;
+  userService.createByAdmin = async () => {
+    throw new AppError('El correo ya está en uso', 409, 'EMAIL_IN_USE');
+  };
+  passwordResetService.sendInviteMail = async () => {
+    mailed = true;
+  };
+
+  const { err } = await call(createUser, { userId: ADMIN_ID, body: { email: 'ana@mail.com' } });
+
+  assert.equal(err?.statusCode, 409);
+  assert.equal(err?.code, 'EMAIL_IN_USE');
+  assert.equal(mailed, false);
+});
+
+// ---------- adminUpdateUser ----------
+
+test('adminUpdateUser forwards only whitelisted fields with the acting admin id', async () => {
+  let received;
+  userService.updateByAdmin = async (id, actorId, updates) => {
+    received = { id, actorId, updates };
+    return { _id: id, ...updates };
+  };
+
+  const result = await call(adminUpdateUser, {
+    params: { id: 'user-2' },
+    userId: ADMIN_ID,
+    body: { name: 'Ana', email: 'a@mail.com', role: 'admin', isActive: false, password: 'x', refreshToken: 'y' },
+  });
+
+  assert.equal(result.err, undefined);
+  assert.deepEqual(received, {
+    id: 'user-2',
+    actorId: ADMIN_ID,
+    updates: { name: 'Ana', email: 'a@mail.com', role: 'admin', isActive: false },
+  });
+  assert.equal(result.body.success, true);
+  assert.equal(result.body.data.user.role, 'admin');
+});
+
+test('adminUpdateUser rejects a body without editable fields with 400', async () => {
+  let called = false;
+  userService.updateByAdmin = async () => {
+    called = true;
+  };
+
+  const { err } = await call(adminUpdateUser, { params: { id: 'user-2' }, userId: ADMIN_ID, body: { password: 'x' } });
+
+  assert.equal(err?.statusCode, 400);
+  assert.equal(called, false);
+});
+
+// ---------- deleteUser ----------
+
+test('deleteUser deletes with the acting admin id', async () => {
+  let received;
+  userService.deleteByAdmin = async (id, actorId) => {
+    received = { id, actorId };
+  };
+
+  const result = await call(deleteUser, { params: { id: 'user-2' }, userId: ADMIN_ID });
+
+  assert.deepEqual(received, { id: 'user-2', actorId: ADMIN_ID });
+  assert.equal(result.body.success, true);
+});
+
+test('deleteUser forwards 409 USER_HAS_ORDERS', async () => {
+  userService.deleteByAdmin = async () => {
+    throw new AppError('Tiene pedidos', 409, 'USER_HAS_ORDERS');
+  };
+
+  const { err } = await call(deleteUser, { params: { id: 'user-2' }, userId: ADMIN_ID });
+
+  assert.equal(err?.code, 'USER_HAS_ORDERS');
+});
+
+// ---------- updateUserRole (retrofit) ----------
+
+test('updateUserRole passes the acting admin id so the guards apply', async () => {
+  let received;
+  userService.updateRole = async (id, actorId, role) => {
+    received = { id, actorId, role };
+    return { _id: id, role };
+  };
+
+  const result = await call(updateUserRole, { params: { id: 'user-2' }, userId: ADMIN_ID, body: { role: 'admin' } });
+
+  assert.deepEqual(received, { id: 'user-2', actorId: ADMIN_ID, role: 'admin' });
+  assert.equal(result.body.data.usuario.role, 'admin');
 });
 
 test('GET /users rejects an authenticated non-admin with 403 ADMIN_REQUIRED', async () => {

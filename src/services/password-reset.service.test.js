@@ -190,6 +190,62 @@ test('resetPassword rejects an unknown or malformed user id', async () => {
   });
 });
 
+test('resetPassword rejects an inactive user with 403 USER_INACTIVE and keeps the password', async () => {
+  const token = tokenFor(fakeUser);
+  fakeUser.isActive = false;
+
+  await assert.rejects(passwordResetService.resetPassword(USER_ID, token, 'nueva123'), {
+    statusCode: 403,
+    code: 'USER_INACTIVE',
+  });
+  assert.equal(fakeUser.password, PASSWORD_HASH);
+  assert.equal(fakeUser.saved, false);
+});
+
+test('resetPassword accepts a 72 h invite token', async () => {
+  const token = tokenFor(fakeUser, { expiresIn: '72h' });
+
+  await passwordResetService.resetPassword(USER_ID, token, 'nueva123');
+
+  assert.equal(fakeUser.password, 'nueva123');
+  assert.equal(fakeUser.saved, true);
+});
+
+// ---------- sendInviteMail (admin-created users) ----------
+
+test('sendInviteMail mails a welcome link valid for 72 h with the reset link format', async () => {
+  await passwordResetService.sendInviteMail(fakeUser);
+
+  assert.equal(sentMails.length, 1);
+  const [mail] = sentMails;
+  assert.equal(mail.to, 'user@mail.com');
+  assert.match(mail.html, /Te crearon una cuenta en Visual Detail/);
+  assert.match(mail.html, /72 horas/);
+  assert.match(mail.text, /defin[ií] tu contraseña/i);
+
+  const prefix = `${config.get('app.frontendUrl')}/reset/${USER_ID}?token=`;
+  const match = mail.html.match(/href="([^"]+)"/);
+  assert.ok(match[1].startsWith(prefix));
+  assert.ok(mail.text.includes(match[1]));
+
+  const token = decodeURIComponent(match[1].slice(prefix.length));
+  const decoded = jwt.verify(token, config.get('jwt.secret') + PASSWORD_HASH);
+  assert.equal(decoded.uid, USER_ID);
+  assert.equal(decoded.exp - decoded.iat, 72 * 60 * 60);
+
+  // The same token sets the password through the regular reset flow
+  await passwordResetService.resetPassword(USER_ID, token, 'nueva123');
+  assert.equal(fakeUser.saved, true);
+});
+
+test('sendInviteMail rejects when the mail cannot be sent', async () => {
+  mailer.sendMail = async () => {
+    throw new Error('smtp down');
+  };
+
+  await assert.rejects(passwordResetService.sendInviteMail(fakeUser));
+});
+
 test('resetPassword rejects a token issued for another user', async () => {
   const otherToken = jwt.sign(
     { uid: '64b7f0c2a1b2c3d4e5f60799' },
