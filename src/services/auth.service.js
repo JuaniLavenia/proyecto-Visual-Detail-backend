@@ -9,6 +9,13 @@ const config = require('../config');
 const { sanitizeFindQuery } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 
+const USER_INACTIVE_MESSAGE = 'Tu cuenta está desactivada. Contactá a un administrador.';
+
+// Legacy documents lack `isActive`: only an explicit `false` means inactive.
+const isInactive = (user) => user.isActive === false;
+
+const inactiveUserError = () => new AppError(USER_INACTIVE_MESSAGE, 403, 'USER_INACTIVE');
+
 class AuthService {
   /**
    * Generate JWT tokens
@@ -44,6 +51,11 @@ class AuthService {
     const passwordCorrecto = await user.comparePassword(password);
     if (!passwordCorrecto) {
       throw new AppError('El correo y/o la contraseña son incorrectos', 401, 'AUTH_INVALID');
+    }
+
+    // Checked only after the password matches, so the status does not leak to guessers
+    if (isInactive(user)) {
+      throw inactiveUserError();
     }
 
     // Generate tokens
@@ -113,6 +125,13 @@ class AuthService {
         throw new AppError('Token inválido o revocado', 401, 'INVALID_TOKEN');
       }
 
+      if (isInactive(user)) {
+        // Revoke the session so the token cannot be retried after reactivation
+        user.refreshToken = null;
+        await user.save();
+        throw inactiveUserError();
+      }
+
       // Generate new tokens (rotation)
       const { accessToken, refreshToken: newRefreshToken } = this.generateTokens(user.id);
 
@@ -158,3 +177,4 @@ class AuthService {
 }
 
 module.exports = new AuthService();
+module.exports.USER_INACTIVE_MESSAGE = USER_INACTIVE_MESSAGE;

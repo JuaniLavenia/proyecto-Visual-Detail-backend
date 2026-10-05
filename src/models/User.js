@@ -23,7 +23,18 @@ const userSchema = new Schema({
     enum: ["minorista", "mayorista", "admin"],
     default: "minorista",
   },
-});
+  name: {
+    type: String,
+    trim: true,
+    maxlength: 80,
+  },
+  // Documents created before this field existed lack it: treat missing as active
+  // (check `isActive === false`, never `!isActive`).
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+}, { timestamps: true });
 
 userSchema.pre("save", async function () {
   // Only hash if password is modified (new or changed)
