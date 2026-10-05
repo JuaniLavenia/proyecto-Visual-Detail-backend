@@ -8,6 +8,8 @@ const userService = require('../services/user.service');
 const { asyncHandler, AppError } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
+const PROFILE_EDITABLE_FIELDS = ['email'];
+
 const getUserInfo = asyncHandler(async (req, res, next) => {
   const requestedId = req.params.id;
   const currentUserId = req.userId?.toString();
@@ -48,7 +50,20 @@ const updateUser = asyncHandler(async (req, res, next) => {
     throw new AppError('Solo podés modificar tu propio perfil', 403, 'FORBIDDEN');
   }
 
-  const user = await userService.update(requestedId, req.body);
+  // Whitelist: role/password/refreshToken have dedicated flows and must never
+  // be writable through the profile endpoint
+  const updates = {};
+  for (const field of PROFILE_EDITABLE_FIELDS) {
+    if (req.body?.[field] !== undefined) {
+      updates[field] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new AppError('No hay campos editables en la solicitud', 400, 'VALIDATION_ERROR');
+  }
+
+  const user = await userService.update(requestedId, updates);
   res.json(success({ usuario: user }, 'Usuario modificado'));
 });
 
