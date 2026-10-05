@@ -96,6 +96,12 @@ const config = convict({
       format: 'url',
       default: 'http://localhost:5173',
       env: 'FRONTEND_URL'
+    },
+    trustProxy: {
+      doc: 'Number of reverse-proxy hops to trust for req.ip (0 locally, 1 behind Render)',
+      format: 'nat',
+      default: 0,
+      env: 'TRUST_PROXY'
     }
   },
   smtp: {

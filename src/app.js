@@ -6,6 +6,10 @@ const app = express();
 // Security: Load config first to validate environment variables
 const config = require('./config');
 
+// Behind a reverse proxy, req.ip must come from X-Forwarded-For so per-IP
+// rate limits do not collapse into one shared bucket.
+app.set("trust proxy", config.get("app.trustProxy"));
+
 // Security: Helmet for HTTP headers (configurado para permitir imágenes cross-origin)
 const helmet = require("helmet");
 app.use(helmet({

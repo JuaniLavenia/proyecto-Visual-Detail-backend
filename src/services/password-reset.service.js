@@ -75,12 +75,12 @@ class PasswordResetService {
       return;
     }
 
-    try {
-      await this.sendResetMail(user);
-    } catch (err) {
+    // Not awaited: waiting for SMTP only when the user exists would let
+    // response latency reveal which e-mails are registered.
+    this.sendResetMail(user).catch((err) => {
       // Log only the failure reason, never credentials or the reset link
       console.error('Password reset mail failed:', err.code || err.message);
-    }
+    });
   }
 
   /**
@@ -112,7 +112,9 @@ class PasswordResetService {
 
     let decoded;
     try {
-      decoded = jwt.verify(token, config.get('jwt.secret') + user.password);
+      decoded = jwt.verify(token, config.get('jwt.secret') + user.password, {
+        algorithms: ['HS256'],
+      });
     } catch (err) {
       if (err instanceof jwt.TokenExpiredError) {
         throw new AppError('El link de recuperación expiró', 400, 'RESET_TOKEN_EXPIRED');
