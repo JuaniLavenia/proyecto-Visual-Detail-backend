@@ -5,6 +5,7 @@ const {
   getUsers,
   updateUser,
   updateUserRole,
+  sendPasswordResetLink,
 } = require("../controllers/users.controller");
 const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
@@ -33,6 +34,18 @@ router.put(
   ],
   requestValidation,
   updateUserRole
+);
+
+// POST /users/:id/password-reset - enviar link de recuperación (solo admins)
+router.post(
+  "/users/:id/password-reset",
+  authenticate,
+  isAdmin,
+  [
+    param("id").isMongoId().withMessage("ID de usuario inválido"),
+  ],
+  requestValidation,
+  sendPasswordResetLink
 );
 
 // GET /user/:id - obtener info de un usuario

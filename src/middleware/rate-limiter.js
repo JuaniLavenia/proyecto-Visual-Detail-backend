@@ -36,6 +36,13 @@ const authLimiter = createRateLimiter({
   max: 100 // 100 requests per 15 min
 });
 
+// Limiter mas estricto para recuperacion de contraseña (envia mails)
+const passwordResetLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5 // 5 requests per 15 min
+});
+
 module.exports = {
-  authLimiter
+  authLimiter,
+  passwordResetLimiter
 };

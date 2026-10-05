@@ -6,6 +6,10 @@ const app = express();
 // Security: Load config first to validate environment variables
 const config = require('./config');
 
+// Behind a reverse proxy, req.ip must come from X-Forwarded-For so per-IP
+// rate limits do not collapse into one shared bucket.
+app.set("trust proxy", config.get("app.trustProxy"));
+
 // Security: Helmet for HTTP headers (configurado para permitir imágenes cross-origin)
 const helmet = require("helmet");
 app.use(helmet({
@@ -19,12 +23,9 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// Security: Rate limiting - solo en endpoints críticos (auth)
-// El límite global rompe navegación normal de usuarios legítimos
-const { authLimiter } = require("./middleware/rate-limiter");
-
-// Aplicar auth limiter al router de auth
-app.use("/api/auth", authLimiter);
+// Security: Rate limiting - solo en endpoints críticos (auth), aplicado
+// por ruta en routes/auth.router.js. El límite global rompe navegación
+// normal de usuarios legítimos.
 
 // CORS
 const cors = require("cors");

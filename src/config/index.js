@@ -90,18 +90,44 @@ const config = convict({
       env: 'RATE_LIMIT_MAX'
     }
   },
+  app: {
+    frontendUrl: {
+      doc: 'Public frontend base URL (used in e-mail links)',
+      format: 'url',
+      default: 'http://localhost:5173',
+      env: 'FRONTEND_URL'
+    },
+    trustProxy: {
+      doc: 'Number of reverse-proxy hops to trust for req.ip (0 locally, 1 behind Render)',
+      format: 'nat',
+      default: 0,
+      env: 'TRUST_PROXY'
+    }
+  },
   smtp: {
     host: {
       doc: 'SMTP host',
       format: 'String',
-      default: 'sandbox.smtp.mailtrap.io',
+      default: 'smtp-relay.brevo.com',
       env: 'SMTP_HOST'
     },
     port: {
       doc: 'SMTP port',
       format: 'port',
-      default: 2525,
+      default: 587,
       env: 'SMTP_PORT'
+    },
+    secure: {
+      doc: 'Use implicit TLS (true for port 465, false for STARTTLS on 587)',
+      format: Boolean,
+      default: false,
+      env: 'SMTP_SECURE'
+    },
+    from: {
+      doc: 'Default sender address',
+      format: 'String',
+      default: 'Visual-Detailing <no-reply@visual-detailing.app>',
+      env: 'SMTP_FROM'
     },
     user: {
       doc: 'SMTP user',
