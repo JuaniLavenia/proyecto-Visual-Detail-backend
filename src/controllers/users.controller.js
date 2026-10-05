@@ -7,7 +7,7 @@
 const userService = require('../services/user.service');
 const passwordResetService = require('../services/password-reset.service');
 const { asyncHandler, AppError } = require('../middleware/error.middleware');
-const { success } = require('../utils/response-formatter');
+const { success, paginated } = require('../utils/response-formatter');
 
 const PROFILE_EDITABLE_FIELDS = ['email'];
 
@@ -25,19 +25,31 @@ const getUserInfo = asyncHandler(async (req, res, next) => {
   res.json(success({ usuario: user }));
 });
 
+// Admin only (route guarded by isAdmin). Query params already validated.
 const getUsers = asyncHandler(async (req, res, next) => {
-  const currentUserId = req.userId?.toString();
-  const isAdmin = req.userRole === 'admin';
+  // Absent page/limit fall back to the service defaults
+  const page = parseInt(req.query.page) || undefined;
+  const limit = parseInt(req.query.limit) || undefined;
+  const { search, role, status, sort } = req.query;
 
-  // Admins ven todos los usuarios, usuarios normales solo ven su propio registro
-  if (isAdmin) {
-    const users = await userService.findAll();
-    return res.json(success({ usuarios: users }));
-  }
+  // Counts cover ALL users so the KPIs do not change with the filters
+  const [result, counts] = await Promise.all([
+    userService.list({ page, limit, search, role, status, sort }),
+    userService.getCounts(),
+  ]);
 
-  // Usuario normal: devolver solo su propio perfil
-  const user = await userService.findById(currentUserId);
-  res.json(success({ usuarios: [user] }));
+  res.json(
+    paginated(
+      result.users,
+      {
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        totalUsers: result.total,
+        limit: result.limit,
+      },
+      { counts }
+    )
+  );
 });
 
 const updateUser = asyncHandler(async (req, res, next) => {

@@ -93,6 +93,14 @@ test('requestPasswordReset swallows SMTP failures', async () => {
   await assert.doesNotReject(passwordResetService.requestPasswordReset('user@mail.com'));
 });
 
+test('requestPasswordReset resolves silently without mailing an inactive user', async () => {
+  fakeUser.isActive = false;
+
+  await assert.doesNotReject(passwordResetService.requestPasswordReset('user@mail.com'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sentMails.length, 0);
+});
+
 // ---------- sendResetLinkToUser (admin) ----------
 
 test('sendResetLinkToUser sends the reset mail to the user', async () => {
@@ -107,6 +115,16 @@ test('sendResetLinkToUser rejects an unknown user with 404 USER_NOT_FOUND', asyn
     statusCode: 404,
     code: 'USER_NOT_FOUND',
   });
+});
+
+test('sendResetLinkToUser rejects an inactive user with 409 USER_INACTIVE and sends nothing', async () => {
+  fakeUser.isActive = false;
+
+  await assert.rejects(passwordResetService.sendResetLinkToUser(USER_ID), {
+    statusCode: 409,
+    code: 'USER_INACTIVE',
+  });
+  assert.equal(sentMails.length, 0);
 });
 
 test('sendResetLinkToUser surfaces SMTP failures as 502 MAIL_SEND_FAILED', async () => {

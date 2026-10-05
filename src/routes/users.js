@@ -11,13 +11,17 @@ const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 const { authenticate } = require("../middleware/auth.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
+const { listUsersQueryValidation } = require("../validators/user.validators");
 
 // ========== RUTAS AUTENTICADAS ==========
 
-// GET /users - listar usuarios (solo admins ven todos, usuarios normales ven solo los suyos)
+// GET /users - listar usuarios paginados con búsqueda, filtros y KPIs (solo admins)
 router.get(
   "/users",
   authenticate,
+  isAdmin,
+  listUsersQueryValidation,
+  requestValidation,
   getUsers
 );
 

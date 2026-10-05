@@ -80,7 +80,8 @@ const optionalAuth = async (req, res, next) => {
     const decoded = jwt.verify(token, config.get('jwt.secret'));
     const user = await User.findById(decoded.uid).select('-password -refreshToken');
 
-    if (user) {
+    // An inactive user is treated as anonymous (legacy: missing isActive = active)
+    if (user && user.isActive !== false) {
       req.user = user;
       req.userId = user._id;
       req.userRole = user.role;

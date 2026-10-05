@@ -73,7 +73,8 @@ class PasswordResetService {
   async requestPasswordReset(email) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const user = await User.findOne(sanitizeFindQuery({ email: normalizedEmail }));
-    if (!user) {
+    // Inactive users get the same silent outcome as unknown e-mails
+    if (!user || user.isActive === false) {
       return;
     }
 
@@ -93,6 +94,15 @@ class PasswordResetService {
     const user = mongoose.isValidObjectId(id) ? await User.findById(id) : null;
     if (!user) {
       throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+    }
+    // Admin-only endpoint, so naming the state reveals nothing new; the link
+    // would be useless anyway because login rejects inactive users.
+    if (user.isActive === false) {
+      throw new AppError(
+        'El usuario está desactivado. Reactivalo antes de enviarle el link de recuperación',
+        409,
+        'USER_INACTIVE'
+      );
     }
 
     try {
