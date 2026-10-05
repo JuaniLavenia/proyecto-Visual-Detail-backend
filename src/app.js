@@ -19,12 +19,9 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// Security: Rate limiting - solo en endpoints críticos (auth)
-// El límite global rompe navegación normal de usuarios legítimos
-const { authLimiter } = require("./middleware/rate-limiter");
-
-// Aplicar auth limiter al router de auth
-app.use("/api/auth", authLimiter);
+// Security: Rate limiting - solo en endpoints críticos (auth), aplicado
+// por ruta en routes/auth.router.js. El límite global rompe navegación
+// normal de usuarios legítimos.
 
 // CORS
 const cors = require("cors");

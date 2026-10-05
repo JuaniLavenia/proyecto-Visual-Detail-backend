@@ -9,12 +9,17 @@ const {
 } = require("../controllers/auth.controller");
 const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
+const {
+  authLimiter,
+  passwordResetLimiter,
+} = require("../middleware/rate-limiter");
 
 const router = express.Router();
 
 // Login with rate limiting and validation
 router.post(
   "/login",
+  authLimiter,
   [
     body("email")
       .trim()
@@ -33,6 +38,7 @@ router.post(
 // Register with validation (existing)
 router.post(
   "/register",
+  authLimiter,
   [
     body("email")
       .trim()
@@ -55,6 +61,7 @@ router.post(
 // Refresh token - NO validacion tradicional, pero requiere body
 router.post(
   "/refresh",
+  authLimiter,
   [
     body("refreshToken")
       .notEmpty()
@@ -67,6 +74,7 @@ router.post(
 // Logout
 router.post(
   "/logout",
+  authLimiter,
   [
     body("refreshToken")
       .notEmpty()
@@ -79,6 +87,8 @@ router.post(
 // Forgot password
 router.post(
   "/forgot",
+  authLimiter,
+  passwordResetLimiter,
   [
     body("email")
       .trim()
@@ -94,6 +104,8 @@ router.post(
 // Reset password
 router.post(
   "/reset/:id/:token",
+  authLimiter,
+  passwordResetLimiter,
   [
     param("id").isMongoId().withMessage("El link de recuperación es inválido"),
     param("token").notEmpty().withMessage("El link de recuperación es inválido"),
