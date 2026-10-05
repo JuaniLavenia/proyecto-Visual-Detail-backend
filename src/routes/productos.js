@@ -14,8 +14,9 @@ const {
   bulkUploadProducts,
   exportProducts,
 } = require("../controllers/product.controller");
-const { body, param, query } = require("express-validator");
+const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
+const { listProductsQueryValidation } = require("../validators/product.validators");
 const { authenticate } = require("../middleware/auth.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
 
@@ -27,10 +28,7 @@ const uploadExcel = multer({ storage: multer.memoryStorage() });
 // GET /productos - listar productos con paginación (público)
 router.get(
   "/productos",
-  [
-    query("page").optional().isInt({ min: 1 }).withMessage("Page debe ser un número positivo"),
-    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit debe estar entre 1 y 100"),
-  ],
+  listProductsQueryValidation,
   requestValidation,
   getProducts
 );
