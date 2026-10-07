@@ -67,13 +67,39 @@ test('createForUser does not rewrite the profile when the phone is unchanged', a
 });
 
 test('createForUser uses the stored profile phone when none is provided', async () => {
-  const user = { _id: USER_ID, phone: '1145678901' };
+  const user = { _id: USER_ID, phone: '+5491145678901' };
 
   const pedido = await pedidoService.createForUser(user, { productos: PRODUCTOS });
 
-  assert.equal(pedido.telefono, '1145678901');
+  assert.equal(pedido.telefono, '+5491145678901');
   assert.deepEqual(profileUpdates, []);
   assert.equal(saved.length, 1);
+});
+
+test('createForUser normalizes a legacy stored phone and updates the profile', async () => {
+  const { Types } = require('mongoose');
+  const _id = new Types.ObjectId(USER_ID);
+  const user = { _id, phone: '3814159688' };
+
+  const pedido = await pedidoService.createForUser(user, { productos: PRODUCTOS });
+
+  assert.equal(pedido.telefono, '+5493814159688');
+  assert.deepEqual(profileUpdates, [
+    { filter: { _id }, update: { $set: { phone: '+5493814159688' } } },
+  ]);
+  assert.equal(saved.length, 1);
+});
+
+test('createForUser rejects with 400 PHONE_REQUIRED when the stored phone is not normalizable', async () => {
+  const { Types } = require('mongoose');
+  const user = { _id: new Types.ObjectId(USER_ID), phone: '12345' };
+
+  await assert.rejects(
+    pedidoService.createForUser(user, { productos: PRODUCTOS }),
+    (err) => err.statusCode === 400 && err.code === 'PHONE_REQUIRED',
+  );
+  assert.equal(saved.length, 0);
+  assert.deepEqual(profileUpdates, []);
 });
 
 test('createForUser rejects with 400 PHONE_REQUIRED when there is no phone at all', async () => {
@@ -88,7 +114,7 @@ test('createForUser rejects with 400 PHONE_REQUIRED when there is no phone at al
 });
 
 test('createForUser keeps only nombre and cantidad from each product', async () => {
-  const user = { _id: USER_ID, phone: '1145678901' };
+  const user = { _id: USER_ID, phone: '+5491145678901' };
 
   const pedido = await pedidoService.createForUser(user, {
     productos: [{ nombre: 'Cera', cantidad: 1, precio: 0, $where: 'x' }],

@@ -9,17 +9,43 @@ const MAX_PRODUCT_QUANTITY = 10000;
 
 // Digits, spaces, "+", "-" and parentheses are accepted as typed
 const PHONE_ALLOWED_CHARS = /^[\d\s+()-]+$/;
-const NORMALIZED_PHONE = new RegExp(`^\\+?\\d{${PHONE_MIN_DIGITS},${PHONE_MAX_DIGITS}}$`);
+const INTERNATIONAL_PHONE = new RegExp(`^\\+\\d{${PHONE_MIN_DIGITS},${PHONE_MAX_DIGITS}}$`);
+const DIGITS_ONLY = /^\d+$/;
+// Area codes in Argentina have 2 to 4 digits; the mobile "15" follows them
+const AREA_CODE_LENGTHS = [2, 3, 4];
 
 /**
- * Normalize a phone to an optional leading "+" followed by digits only.
- * Returns null when the input is not a valid phone (8-15 digits, "+" only
- * as the first non-space character).
+ * Normalize a national Argentine number (digits only, no "+") to the
+ * "+549" mobile international format, or null when it is not one.
+ */
+const normalizeArgentinePhone = (digits) => {
+  if (digits.startsWith('549') && digits.length === 13) return `+${digits}`;
+  if (digits.startsWith('54') && digits.length === 12) return `+549${digits.slice(2)}`;
+
+  // Trunk prefix "0"
+  let national = digits.startsWith('0') ? digits.slice(1) : digits;
+  if (national.length === 12) {
+    const areaLength = AREA_CODE_LENGTHS.find((len) => national.slice(len, len + 2) === '15');
+    if (areaLength !== undefined) {
+      national = national.slice(0, areaLength) + national.slice(areaLength + 2);
+    }
+  }
+  return national.length === 10 ? `+549${national}` : null;
+};
+
+/**
+ * Normalize a phone. Numbers typed with a leading "+" are international and
+ * kept as "+" plus digits (8-15 digits). Any other number is taken as
+ * Argentine and converted to "+549" + area code + number. Returns null when
+ * the input is not a valid phone.
  */
 const normalizePhone = (value) => {
   if (typeof value !== 'string' || !PHONE_ALLOWED_CHARS.test(value)) return null;
   const compact = value.replace(/[\s()-]/g, '');
-  return NORMALIZED_PHONE.test(compact) ? compact : null;
+  if (compact.startsWith('+')) {
+    return INTERNATIONAL_PHONE.test(compact) ? compact : null;
+  }
+  return DIGITS_ONLY.test(compact) ? normalizeArgentinePhone(compact) : null;
 };
 
 // POST /pedidos - the owner comes from the token, never from the body
@@ -44,7 +70,7 @@ const createPedidoValidation = [
     .optional({ values: 'falsy' })
     .custom((value) => normalizePhone(value) !== null)
     .withMessage(
-      `Teléfono inválido: usá solo números, espacios, +, - o paréntesis (entre ${PHONE_MIN_DIGITS} y ${PHONE_MAX_DIGITS} dígitos)`
+      'Teléfono inválido: ingresá tu celular con código de área (ej: 381 4159688) o en formato internacional con +'
     )
     .bail()
     .customSanitizer(normalizePhone),

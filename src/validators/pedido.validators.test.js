@@ -20,15 +20,34 @@ const validateCreate = (body) => runChains(createPedidoValidation, { body });
 
 const PRODUCTOS = [{ nombre: 'Shampoo', cantidad: 2 }];
 
-test('normalizePhone keeps an optional leading + and digits only', () => {
+test('normalizePhone keeps international numbers typed with + as digits only', () => {
   assert.equal(normalizePhone('+54 9 (11) 2345-6789'), '+5491123456789');
-  assert.equal(normalizePhone(' 011 4567-8901 '), '01145678901');
-  assert.equal(normalizePhone('12345678'), '12345678');
+  assert.equal(normalizePhone('+1 555 123 4567'), '+15551234567');
 });
 
-test('normalizePhone rejects too short, too long and invalid characters', () => {
-  assert.equal(normalizePhone('1234567'), null);
-  assert.equal(normalizePhone('1234567890123456'), null);
+test('normalizePhone converts Argentine numbers without + to +549 mobile format', () => {
+  const cases = {
+    '3814159688': '+5493814159688',
+    '381 4159688': '+5493814159688',
+    '0381 15 4159688': '+5493814159688',
+    '0381-154159688': '+5493814159688',
+    '11 1523456789': '+5491123456789',
+    '011 15 2345 6789': '+5491123456789',
+    ' 011 4567-8901 ': '+5491145678901',
+    '5493814159688': '+5493814159688',
+    '543814159688': '+5493814159688',
+  };
+  for (const [input, expected] of Object.entries(cases)) {
+    assert.equal(normalizePhone(input), expected, input);
+  }
+});
+
+test('normalizePhone rejects numbers that are not a valid Argentine or international phone', () => {
+  assert.equal(normalizePhone('12345'), null);
+  assert.equal(normalizePhone('381415968'), null);
+  assert.equal(normalizePhone('12345678'), null);
+  assert.equal(normalizePhone('+1234567'), null);
+  assert.equal(normalizePhone('+1234567890123456'), null);
   assert.equal(normalizePhone('11-2345-678a'), null);
   assert.equal(normalizePhone('54+11 2345 6789'), null);
   assert.equal(normalizePhone(''), null);
@@ -41,6 +60,12 @@ test('create order accepts productos with a phone and normalizes it', async () =
   assert.equal(req.body.telefono, '+541123456789');
 });
 
+test('create order normalizes a national phone to +549 format', async () => {
+  const { req, errors } = await validateCreate({ productos: PRODUCTOS, telefono: '0381 15 4159688' });
+  assert.deepEqual(errors, []);
+  assert.equal(req.body.telefono, '+5493814159688');
+});
+
 test('create order accepts a missing phone (taken from the profile later)', async () => {
   const { errors } = await validateCreate({ productos: PRODUCTOS });
   assert.deepEqual(errors, []);
@@ -49,6 +74,7 @@ test('create order accepts a missing phone (taken from the profile later)', asyn
 test('create order rejects an invalid phone', async () => {
   const { errors } = await validateCreate({ productos: PRODUCTOS, telefono: '123' });
   assert.deepEqual(errors.map((e) => e.path), ['telefono']);
+  assert.match(errors[0].msg, /código de área/);
 });
 
 test('create order rejects an empty or missing productos array', async () => {

@@ -9,6 +9,7 @@ const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanit
 const { AppError } = require('../middleware/error.middleware');
 const { escapeRegex } = require('./product-query');
 const { buildUserFilter } = require('./user.service');
+const { normalizePhone } = require('../validators/pedido.validators');
 
 const ESTADOS = ['Pendiente', 'Completado', 'Cancelado'];
 const PHONE_LIKE = /^\+?\d+$/;
@@ -96,7 +97,9 @@ class PedidoService {
    * otherwise the stored profile phone is used. One of them is required.
    */
   async createForUser(user, { productos = [], telefono } = {}) {
-    const phone = telefono || user.phone;
+    // A stored phone may predate normalization (e.g. "3814159688"); one
+    // that cannot be normalized counts as missing so the client asks again
+    const phone = telefono || (user.phone ? normalizePhone(user.phone) : null);
     if (!phone) {
       throw new AppError(
         'Necesitamos un teléfono de contacto para crear el pedido',
@@ -107,8 +110,8 @@ class PedidoService {
 
     // Profile first: if it fails, no order is created (a client retry
     // would otherwise duplicate the order)
-    if (telefono && telefono !== user.phone) {
-      await User.updateOne({ _id: user._id }, { $set: { phone: telefono } });
+    if (phone !== user.phone) {
+      await User.updateOne({ _id: user._id }, { $set: { phone } });
     }
 
     return this.create({
