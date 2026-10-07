@@ -15,22 +15,19 @@ const { body, param, query } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
 const { authenticate } = require("../middleware/auth.middleware");
+const { createPedidoValidation } = require("../validators/pedido.validators");
 const router = express.Router();
 
-// ========== RUTAS PÚBLICAS / SEMI-PÚBLICAS ==========
+// ========== RUTAS DE USUARIO AUTENTICADO ==========
 
-// POST /pedidos - crear pedido (guest checkout sin auth, pero con validation)
+// POST /pedidos - crear pedido del usuario del token (teléfono del body o del perfil)
 router.post(
   "/pedidos",
-  [
-    body("usuario").notEmpty().withMessage("Usuario es requerido"),
-    body("productos").isArray({ min: 1 }).withMessage("Productos debe ser un array no vacío"),
-  ],
+  authenticate,
+  createPedidoValidation,
   requestValidation,
   createPedido
 );
-
-// ========== RUTAS DE USUARIO AUTENTICADO ==========
 
 // GET /pedidos/:userId - obtener pedidos del usuario
 router.get(

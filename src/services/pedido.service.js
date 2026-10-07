@@ -4,6 +4,7 @@
  */
 
 const Pedido = require('../models/Order');
+const User = require('../models/User');
 const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 
@@ -35,6 +36,34 @@ class PedidoService {
     const sanitizedData = sanitizeObject(pedidoData);
     const pedido = new Pedido(sanitizedData);
     return await pedido.save();
+  }
+
+  /**
+   * Create an order for the authenticated user. `telefono` must already be
+   * validated and normalized; when given it also becomes the profile phone,
+   * otherwise the stored profile phone is used. One of them is required.
+   */
+  async createForUser(user, { productos = [], telefono } = {}) {
+    const phone = telefono || user.phone;
+    if (!phone) {
+      throw new AppError(
+        'Necesitamos un teléfono de contacto para crear el pedido',
+        400,
+        'PHONE_REQUIRED'
+      );
+    }
+
+    // Profile first: if it fails, no order is created (a client retry
+    // would otherwise duplicate the order)
+    if (telefono && telefono !== user.phone) {
+      await User.updateOne({ _id: user._id }, { $set: { phone: telefono } });
+    }
+
+    return this.create({
+      usuario: user._id,
+      telefono: phone,
+      productos: productos.map(({ nombre, cantidad }) => ({ nombre, cantidad })),
+    });
   }
 
   /**
