@@ -277,7 +277,9 @@ const sanitizeObject = (obj) => {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) return obj.map(item => sanitizeObject(item));
   if (typeof obj !== 'object') return obj;
-  
+  // Only walk plain objects: ObjectId, Date, etc. must keep their type
+  if (Object.getPrototypeOf(obj) !== Object.prototype) return obj;
+
   const sanitized = {};
   for (const key in obj) {
     if (key.startsWith('$')) continue;

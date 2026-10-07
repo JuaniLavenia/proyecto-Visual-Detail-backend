@@ -47,6 +47,16 @@ test('createForUser saves a provided phone to the profile and the order', async 
   assert.equal(saved.length, 1);
 });
 
+test('createForUser keeps an ObjectId user id castable (req.user is a document)', async () => {
+  const { Types } = require('mongoose');
+  const user = { _id: new Types.ObjectId(USER_ID), phone: '+541123456789' };
+
+  const pedido = await pedidoService.createForUser(user, { productos: PRODUCTOS });
+
+  assert.equal(pedido.validateSync(), undefined);
+  assert.equal(String(pedido.usuario), USER_ID);
+});
+
 test('createForUser does not rewrite the profile when the phone is unchanged', async () => {
   const user = { _id: USER_ID, phone: '+541123456789' };
 
