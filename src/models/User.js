@@ -28,6 +28,12 @@ const userSchema = new Schema({
     trim: true,
     maxlength: 80,
   },
+  // Contact phone, normalized to an optional leading "+" and digits only
+  // (see validators/pedido.validators.js). Saved from checkout.
+  phone: {
+    type: String,
+    trim: true,
+  },
   // Documents created before this field existed lack it: treat missing as active
   // (check `isActive === false`, never `!isActive`).
   isActive: {

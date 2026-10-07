@@ -4,8 +4,62 @@
  */
 
 const Pedido = require('../models/Order');
+const User = require('../models/User');
 const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
+const { escapeRegex } = require('./product-query');
+const { buildUserFilter } = require('./user.service');
+const { normalizePhone } = require('../validators/pedido.validators');
+
+const ESTADOS = ['Pendiente', 'Completado', 'Cancelado'];
+const PHONE_LIKE = /^\+?\d+$/;
+
+/**
+ * Build the admin orders list filter. `search` matches the order number
+ * (exact, when numeric), the phone snapshot (escaped regex; phone-like
+ * input is compacted like the stored value) and the orders of `userIds`
+ * (users whose email/name matched the same search).
+ *
+ * The result must NOT go through sanitizeFindQuery: it strips "$" from
+ * string values, which would corrupt an escaped "\$" into a dangling "\".
+ * Keys are fixed here and every value is checked.
+ */
+const buildPedidoFilter = ({ estado, search, userIds = [] } = {}) => {
+  const filter = {};
+  if (typeof estado === 'string' && ESTADOS.includes(estado)) {
+    filter.estado = estado;
+  }
+
+  const term = typeof search === 'string' ? search.trim() : '';
+  if (!term) return filter;
+
+  const or = [];
+  if (/^\d+$/.test(term) && Number.isSafeInteger(Number(term))) {
+    or.push({ numeroPedido: Number(term) });
+  }
+  const compact = term.replace(/[\s()-]/g, '');
+  const phoneTerm = PHONE_LIKE.test(compact) ? compact : term;
+  or.push({ telefono: { $regex: escapeRegex(phoneTerm), $options: 'i' } });
+  if (Array.isArray(userIds) && userIds.length > 0) {
+    or.push({ usuario: { $in: userIds } });
+  }
+  filter.$or = or;
+  return filter;
+};
+
+/**
+ * Admin view of a lean order: always carries `telefono` (null for legacy
+ * orders) and `fecha` = createdAt, or the ObjectId creation time for
+ * orders created before timestamps existed.
+ */
+const toAdminOrder = (order) => {
+  const idDate = typeof order._id?.getTimestamp === 'function' ? order._id.getTimestamp() : null;
+  return {
+    ...order,
+    telefono: order.telefono ?? null,
+    fecha: order.createdAt ?? idDate,
+  };
+};
 
 class PedidoService {
   /**
@@ -13,7 +67,7 @@ class PedidoService {
    */
   async findAll(query = {}) {
     const sanitizedQuery = sanitizeFindQuery(query);
-    const pedidos = await Pedido.find(sanitizedQuery).sort({ createdAt: -1 });
+    const pedidos = await Pedido.find(sanitizedQuery).sort({ _id: -1 });
     return pedidos;
   }
 
@@ -35,6 +89,36 @@ class PedidoService {
     const sanitizedData = sanitizeObject(pedidoData);
     const pedido = new Pedido(sanitizedData);
     return await pedido.save();
+  }
+
+  /**
+   * Create an order for the authenticated user. `telefono` must already be
+   * validated and normalized; when given it also becomes the profile phone,
+   * otherwise the stored profile phone is used. One of them is required.
+   */
+  async createForUser(user, { productos = [], telefono } = {}) {
+    // A stored phone may predate normalization (e.g. "3814159688"); one
+    // that cannot be normalized counts as missing so the client asks again
+    const phone = telefono || (user.phone ? normalizePhone(user.phone) : null);
+    if (!phone) {
+      throw new AppError(
+        'Necesitamos un teléfono de contacto para crear el pedido',
+        400,
+        'PHONE_REQUIRED'
+      );
+    }
+
+    // Profile first: if it fails, no order is created (a client retry
+    // would otherwise duplicate the order)
+    if (phone !== user.phone) {
+      await User.updateOne({ _id: user._id }, { $set: { phone } });
+    }
+
+    return this.create({
+      usuario: user._id,
+      telefono: phone,
+      productos: productos.map(({ nombre, cantidad }) => ({ nombre, cantidad })),
+    });
   }
 
   /**
@@ -61,29 +145,37 @@ class PedidoService {
   async findByUser(userId) {
     const query = { usuario: userId };
     const sanitizedQuery = sanitizeFindQuery(query);
-    return await Pedido.find(sanitizedQuery).sort({ createdAt: -1 });
+    return await Pedido.find(sanitizedQuery).sort({ _id: -1 });
   }
 
   /**
    * Get all pedidos (admin view) with all data and pagination
    */
-  async findAllWithUser(page = 1, limit = 10, estado = null) {
-    const query = estado && estado !== 'todos' ? { estado } : {};
+  async findAllWithUser({ page = 1, limit = 10, estado = null, search } = {}) {
+    const term = typeof search === 'string' ? search.trim() : '';
+    // Users whose email or name match, so their orders match too
+    const userIds = term
+      ? (await User.find(buildUserFilter({ search: term })).select('_id').lean()).map((u) => u._id)
+      : [];
+    const filter = buildPedidoFilter({ estado, search: term, userIds });
     const skip = (page - 1) * limit;
-    
+
     const [pedidos, total] = await Promise.all([
-      Pedido.find(query)
-        .populate('usuario', 'email role')
-        .sort({ createdAt: -1 })
+      Pedido.find(filter)
+        .populate('usuario', 'email role name phone')
+        // _id is time-ordered, so this also sorts legacy orders without createdAt
+        .sort({ _id: -1 })
         .skip(skip)
-        .limit(limit),
-      Pedido.countDocuments(query)
+        .limit(limit)
+        .lean(),
+      Pedido.countDocuments(filter)
     ]);
 
     return {
-      pedidos,
+      pedidos: pedidos.map(toAdminOrder),
       total,
       page,
+      limit,
       totalPages: Math.ceil(total / limit)
     };
   }
@@ -159,7 +251,7 @@ class PedidoService {
   async getRecentOrders(limit = 10) {
     return await Pedido.find()
       .populate('usuario', 'email role')
-      .sort({ createdAt: -1 })
+      .sort({ _id: -1 })
       .limit(limit);
   }
 
@@ -188,7 +280,9 @@ const sanitizeObject = (obj) => {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) return obj.map(item => sanitizeObject(item));
   if (typeof obj !== 'object') return obj;
-  
+  // Only walk plain objects: ObjectId, Date, etc. must keep their type
+  if (Object.getPrototypeOf(obj) !== Object.prototype) return obj;
+
   const sanitized = {};
   for (const key in obj) {
     if (key.startsWith('$')) continue;
@@ -197,4 +291,8 @@ const sanitizeObject = (obj) => {
   return sanitized;
 };
 
-module.exports = new PedidoService();
+const pedidoService = new PedidoService();
+pedidoService.buildPedidoFilter = buildPedidoFilter;
+pedidoService.toAdminOrder = toAdminOrder;
+
+module.exports = pedidoService;

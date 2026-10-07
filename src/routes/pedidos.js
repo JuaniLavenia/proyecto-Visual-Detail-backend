@@ -15,22 +15,22 @@ const { body, param, query } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
 const { authenticate } = require("../middleware/auth.middleware");
+const {
+  createPedidoValidation,
+  listAdminPedidosQueryValidation,
+} = require("../validators/pedido.validators");
 const router = express.Router();
 
-// ========== RUTAS PÚBLICAS / SEMI-PÚBLICAS ==========
+// ========== RUTAS DE USUARIO AUTENTICADO ==========
 
-// POST /pedidos - crear pedido (guest checkout sin auth, pero con validation)
+// POST /pedidos - crear pedido del usuario del token (teléfono del body o del perfil)
 router.post(
   "/pedidos",
-  [
-    body("usuario").notEmpty().withMessage("Usuario es requerido"),
-    body("productos").isArray({ min: 1 }).withMessage("Productos debe ser un array no vacío"),
-  ],
+  authenticate,
+  createPedidoValidation,
   requestValidation,
   createPedido
 );
-
-// ========== RUTAS DE USUARIO AUTENTICADO ==========
 
 // GET /pedidos/:userId - obtener pedidos del usuario
 router.get(
@@ -73,14 +73,10 @@ router.put(
 // GET /admin/pedidos - Get all orders with pagination (admin only)
 router.get(
   "/admin/pedidos",
-  [
-    query("page").optional().isInt({ min: 1 }).withMessage("Page debe ser >= 1"),
-    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit debe ser 1-100"),
-    query("estado").optional().isIn(["todos", "Pendiente", "Completado", "Cancelado"]).withMessage("Estado inválido"),
-  ],
-  requestValidation,
   authenticate,
   isAdmin,
+  listAdminPedidosQueryValidation,
+  requestValidation,
   getAllPedidos
 );
 
@@ -103,18 +99,20 @@ router.get(
 // GET /admin/pedidos/recent - Get recent orders (admin only)
 router.get(
   "/admin/pedidos/recent",
+  authenticate,
+  isAdmin,
   [
     query("limit").optional().isInt({ min: 1, max: 50 }).withMessage("Limit debe ser un número entre 1 y 50"),
   ],
   requestValidation,
-  authenticate,
-  isAdmin,
   getRecentPedidos
 );
 
 // PUT /admin/pedidos/:id/status - Update order status (admin only)
 router.put(
   "/admin/pedidos/:id/status",
+  authenticate,
+  isAdmin,
   [
     param("id").isMongoId().withMessage("ID de pedido inválido"),
     body("nuevoEstado")
@@ -122,8 +120,6 @@ router.put(
       .withMessage("Estado debe ser: Pendiente, Completado o Cancelado"),
   ],
   requestValidation,
-  authenticate,
-  isAdmin,
   updatePedidoStatus
 );
 

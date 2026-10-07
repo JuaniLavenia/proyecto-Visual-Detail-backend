@@ -9,8 +9,9 @@ const { asyncHandler, AppError } = require('../middleware/error.middleware');
 const { success } = require('../utils/response-formatter');
 
 const createPedido = asyncHandler(async (req, res, next) => {
-  const { productos, usuario } = req.body;
-  const pedido = await pedidoService.create({ productos, usuario });
+  // The owner is always the token user; any `usuario` in the body is ignored
+  const { productos, telefono } = req.body;
+  const pedido = await pedidoService.createForUser(req.user, { productos, telefono });
   res.status(201).json(success(pedido, 'Pedido creado exitosamente'));
 });
 
@@ -95,8 +96,9 @@ const getAllPedidos = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const estado = req.query.estado || null;
+  const search = req.query.search || undefined;
 
-  const result = await pedidoService.findAllWithUser(page, limit, estado);
+  const result = await pedidoService.findAllWithUser({ page, limit, estado, search });
   res.json(success(result));
 });
 

@@ -21,7 +21,12 @@ const pedidoSchema = new Schema({
     enum: ["Pendiente", "Completado", "Cancelado"],
     default: "Pendiente",
   },
-});
+  // Snapshot of the customer's phone at order time
+  telefono: {
+    type: String,
+    trim: true,
+  },
+}, { timestamps: true });
 
 pedidoSchema.pre("save", async function (next) {
   try {
