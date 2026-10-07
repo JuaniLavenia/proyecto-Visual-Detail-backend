@@ -5,6 +5,8 @@ const { validationResult } = require('express-validator');
 const {
   normalizePhone,
   createPedidoValidation,
+  listAdminPedidosQueryValidation,
+  MAX_SEARCH_LENGTH,
 } = require('./pedido.validators');
 
 const runChains = async (chains, req) => {
@@ -62,4 +64,30 @@ test('create order rejects products without a name or with a non-positive quanti
     productos: [{ nombre: '  ', cantidad: 1 }, { nombre: 'Cera', cantidad: 0 }],
   });
   assert.deepEqual(errors.map((e) => e.path).sort(), ['productos[0].nombre', 'productos[1].cantidad']);
+});
+
+const validateAdminList = (query) => runChains(listAdminPedidosQueryValidation, { query });
+
+test('admin orders query accepts page, limit, estado and a trimmed search', async () => {
+  const { req, errors } = await validateAdminList({
+    page: '2',
+    limit: '25',
+    estado: 'Pendiente',
+    search: '  ana@mail ',
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(req.query.search, 'ana@mail');
+});
+
+test('admin orders query rejects a too long or repeated search', async () => {
+  const long = await validateAdminList({ search: 'x'.repeat(MAX_SEARCH_LENGTH + 1) });
+  assert.deepEqual(long.errors.map((e) => e.path), ['search']);
+
+  const repeated = await validateAdminList({ search: ['a', 'b'] });
+  assert.deepEqual(repeated.errors.map((e) => e.path), ['search']);
+});
+
+test('admin orders query rejects out-of-range page/limit and unknown estado', async () => {
+  const { errors } = await validateAdminList({ page: '0', limit: '101', estado: 'Enviado' });
+  assert.deepEqual(errors.map((e) => e.path).sort(), ['estado', 'limit', 'page']);
 });

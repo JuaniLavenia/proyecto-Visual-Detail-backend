@@ -1,5 +1,7 @@
-const { body } = require('express-validator');
+const { body, query } = require('express-validator');
 
+const ESTADO_VALUES = ['Pendiente', 'Completado', 'Cancelado'];
+const MAX_SEARCH_LENGTH = 100;
 const PHONE_MIN_DIGITS = 8;
 const PHONE_MAX_DIGITS = 15;
 const MAX_PRODUCT_NAME_LENGTH = 200;
@@ -48,9 +50,31 @@ const createPedidoValidation = [
     .customSanitizer(normalizePhone),
 ];
 
+// GET /admin/pedidos - admin list query params
+const listAdminPedidosQueryValidation = [
+  query('page').optional().isInt({ min: 1, max: 100000 }).withMessage('Page debe ser un número entre 1 y 100000'),
+  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit debe ser 1-100'),
+  query('estado')
+    .optional()
+    .isIn(['todos', ...ESTADO_VALUES])
+    .withMessage('Estado inválido'),
+  // A repeated param arrives as an array and is rejected
+  query('search')
+    .optional()
+    .isString()
+    .withMessage('Search debe ser un texto')
+    .bail()
+    .trim()
+    .isLength({ max: MAX_SEARCH_LENGTH })
+    .withMessage(`Search no puede superar ${MAX_SEARCH_LENGTH} caracteres`),
+];
+
 module.exports = {
   PHONE_MIN_DIGITS,
   PHONE_MAX_DIGITS,
+  MAX_SEARCH_LENGTH,
+  ESTADO_VALUES,
   normalizePhone,
   createPedidoValidation,
+  listAdminPedidosQueryValidation,
 };

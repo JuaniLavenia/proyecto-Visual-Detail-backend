@@ -96,8 +96,9 @@ const getAllPedidos = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const estado = req.query.estado || null;
+  const search = req.query.search || undefined;
 
-  const result = await pedidoService.findAllWithUser(page, limit, estado);
+  const result = await pedidoService.findAllWithUser({ page, limit, estado, search });
   res.json(success(result));
 });
 
