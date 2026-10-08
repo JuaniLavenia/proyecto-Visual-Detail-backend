@@ -21,8 +21,9 @@ class AuthService {
    * Generate JWT tokens
    */
   generateTokens(userId) {
+    // `type` lets the auth middleware reject refresh tokens used as Bearer tokens
     const accessToken = jwt.sign(
-      { uid: userId },
+      { uid: userId, type: 'access' },
       config.get('jwt.secret'),
       { expiresIn: config.get('jwt.accessExpiry') }
     );

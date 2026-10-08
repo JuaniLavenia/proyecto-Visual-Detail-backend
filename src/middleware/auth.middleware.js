@@ -11,6 +11,8 @@ const User = require('../models/User');
 const { AppError } = require('./error.middleware');
 const { USER_INACTIVE_MESSAGE } = require('../services/auth.service');
 
+const ACCESS_TOKEN_TYPE = 'access';
+
 /**
  * Middleware to verify the user is authenticated
  * Attaches req.user (full user document) and req.userId to the request
@@ -28,6 +30,11 @@ const authenticate = async (req, res, next) => {
 
     // Verify token
     const decoded = jwt.verify(token, config.get('jwt.secret'));
+
+    // Access and refresh tokens share the secret: only access tokens authenticate
+    if (decoded.type !== ACCESS_TOKEN_TYPE) {
+      throw new AppError('Token inválido', 401, 'INVALID_TOKEN');
+    }
 
     // Get user from database
     const user = await User.findById(decoded.uid).select('-password -refreshToken');
@@ -78,6 +85,12 @@ const optionalAuth = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
 
     const decoded = jwt.verify(token, config.get('jwt.secret'));
+
+    // A non-access token (e.g. a refresh token) is treated as anonymous
+    if (decoded.type !== ACCESS_TOKEN_TYPE) {
+      return next();
+    }
+
     const user = await User.findById(decoded.uid).select('-password -refreshToken');
 
     // An inactive user is treated as anonymous (legacy: missing isActive = active)
