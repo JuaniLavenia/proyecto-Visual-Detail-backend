@@ -54,7 +54,7 @@ router.put(
   cancelPedido
 );
 
-// PUT /pedido/modificar/:id - modificar estado (usuario propietario del pedido)
+// PUT /pedido/modificar/:id - modificar estado (admin: cualquier estado; propietario: solo cancelar un pedido pendiente)
 router.put(
   "/pedido/modificar/:id",
   authenticate,
