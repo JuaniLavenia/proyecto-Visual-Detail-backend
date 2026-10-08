@@ -3,6 +3,7 @@
  * Handles authentication logic: login, register, refresh tokens, logout
  */
 
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const config = require('../config');
@@ -15,6 +16,20 @@ const USER_INACTIVE_MESSAGE = 'Tu cuenta está desactivada. Contactá a un admin
 const isInactive = (user) => user.isActive === false;
 
 const inactiveUserError = () => new AppError(USER_INACTIVE_MESSAGE, 403, 'USER_INACTIVE');
+
+/**
+ * Refresh tokens are never stored in plain text: User.refreshToken holds the
+ * SHA-256 hex digest of the current token (a leaked DB row cannot be replayed).
+ */
+const hashRefreshToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+// Constant-time comparison of the presented token against the stored hash
+const refreshTokenMatches = (token, storedHash) => {
+  if (!storedHash) return false;
+  const presented = Buffer.from(hashRefreshToken(token), 'utf8');
+  const stored = Buffer.from(storedHash, 'utf8');
+  return presented.length === stored.length && crypto.timingSafeEqual(presented, stored);
+};
 
 class AuthService {
   /**
@@ -29,7 +44,8 @@ class AuthService {
     );
 
     const refreshToken = jwt.sign(
-      { uid: userId, type: 'refresh' },
+      // jti makes every token unique, even two issued within the same second
+      { uid: userId, type: 'refresh', jti: crypto.randomUUID() },
       config.get('jwt.secret'),
       { expiresIn: config.get('jwt.refreshExpiry') }
     );
@@ -62,8 +78,8 @@ class AuthService {
     // Generate tokens
     const { accessToken, refreshToken } = this.generateTokens(user.id);
     
-    // Store refresh token (in production, hash it for security)
-    user.refreshToken = refreshToken;
+    // Store only the hash of the refresh token
+    user.refreshToken = hashRefreshToken(refreshToken);
     await user.save();
 
     return {
@@ -93,8 +109,8 @@ class AuthService {
     // Generate tokens
     const { accessToken, refreshToken } = this.generateTokens(user.id);
     
-    // Store refresh token
-    user.refreshToken = refreshToken;
+    // Store only the hash of the refresh token
+    user.refreshToken = hashRefreshToken(refreshToken);
     await user.save();
 
     return {
@@ -122,7 +138,18 @@ class AuthService {
 
       // Find user and verify stored refresh token
       const user = await User.findById(decoded.uid);
-      if (!user || user.refreshToken !== refreshToken) {
+      if (!user) {
+        throw new AppError('Token inválido o revocado', 401, 'INVALID_TOKEN');
+      }
+
+      // A validly signed token that is not the current one was already rotated
+      // out (or revoked): treat it as reuse of a possibly stolen token and
+      // revoke the current session too, forcing a new login.
+      if (!refreshTokenMatches(refreshToken, user.refreshToken)) {
+        if (user.refreshToken) {
+          user.refreshToken = null;
+          await user.save();
+        }
         throw new AppError('Token inválido o revocado', 401, 'INVALID_TOKEN');
       }
 
@@ -136,8 +163,8 @@ class AuthService {
       // Generate new tokens (rotation)
       const { accessToken, refreshToken: newRefreshToken } = this.generateTokens(user.id);
 
-      // Update stored refresh token (rotation)
-      user.refreshToken = newRefreshToken;
+      // Update stored refresh token hash (rotation)
+      user.refreshToken = hashRefreshToken(newRefreshToken);
       await user.save();
 
       return { accessToken, refreshToken: newRefreshToken };

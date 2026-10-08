@@ -14,6 +14,8 @@ const userSchema = new Schema({
     type: String,
     required: true,
   },
+  // SHA-256 hex digest of the current refresh token, never the token itself
+  // (see services/auth.service.js). null = no active session.
   refreshToken: {
     type: String,
     default: null,

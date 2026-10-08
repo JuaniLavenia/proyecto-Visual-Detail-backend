@@ -1,5 +1,6 @@
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
 
 const config = require('../config');
@@ -35,6 +36,8 @@ const makeUser = (overrides = {}) => ({
   },
   ...overrides,
 });
+
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
 const refreshTokenFor = (userId) =>
   jwt.sign({ uid: userId, type: 'refresh' }, config.get('jwt.secret'), { expiresIn: '7d' });
@@ -72,7 +75,8 @@ test('login issues and stores tokens for an active user', async () => {
 
   assert.ok(result.accessToken);
   assert.ok(result.refreshToken);
-  assert.equal(fakeUser.refreshToken, result.refreshToken);
+  assert.equal(fakeUser.refreshToken, sha256(result.refreshToken));
+  assert.notEqual(fakeUser.refreshToken, result.refreshToken);
   assert.equal(fakeUser.saved, true);
 });
 
@@ -110,17 +114,18 @@ test('login answers AUTH_INVALID for an inactive user with a wrong password', as
 
 test('refresh rotates tokens for an active user', async () => {
   const token = refreshTokenFor(USER_ID);
-  fakeUser.refreshToken = token;
+  fakeUser.refreshToken = sha256(token);
 
   const result = await authService.refresh(token);
 
   assert.ok(result.accessToken);
-  assert.equal(fakeUser.refreshToken, result.refreshToken);
+  assert.notEqual(result.refreshToken, token);
+  assert.equal(fakeUser.refreshToken, sha256(result.refreshToken));
 });
 
 test('refresh rejects an inactive user with 403 USER_INACTIVE and clears the stored token', async () => {
   const token = refreshTokenFor(USER_ID);
-  fakeUser.refreshToken = token;
+  fakeUser.refreshToken = sha256(token);
   fakeUser.isActive = false;
 
   await assert.rejects(authService.refresh(token), {
@@ -129,4 +134,46 @@ test('refresh rejects an inactive user with 403 USER_INACTIVE and clears the sto
   });
   assert.equal(fakeUser.refreshToken, null);
   assert.equal(fakeUser.saved, true);
+});
+
+test('refresh rejects a reused (rotated-out) token with 401 and revokes the session', async () => {
+  const oldToken = refreshTokenFor(USER_ID);
+  fakeUser.refreshToken = sha256(oldToken);
+  const { refreshToken: currentToken } = await authService.refresh(oldToken);
+  fakeUser.saved = false;
+
+  await assert.rejects(authService.refresh(oldToken), {
+    statusCode: 401,
+    code: 'INVALID_TOKEN',
+  });
+  assert.equal(fakeUser.refreshToken, null);
+  assert.equal(fakeUser.saved, true);
+
+  // The current session is revoked too
+  await assert.rejects(authService.refresh(currentToken), { statusCode: 401 });
+});
+
+test('refresh rejects a plain-text stored token (pre-hash sessions re-login)', async () => {
+  const token = refreshTokenFor(USER_ID);
+  fakeUser.refreshToken = token;
+
+  await assert.rejects(authService.refresh(token), { statusCode: 401, code: 'INVALID_TOKEN' });
+});
+
+test('refresh rejects a token after logout', async () => {
+  const token = refreshTokenFor(USER_ID);
+  fakeUser.refreshToken = sha256(token);
+  await authService.logout(token);
+
+  await assert.rejects(authService.refresh(token), { statusCode: 401, code: 'INVALID_TOKEN' });
+  assert.equal(fakeUser.refreshToken, null);
+});
+
+test('refresh tokens issued back-to-back differ and carry a jti', () => {
+  const first = authService.generateTokens(USER_ID).refreshToken;
+  const second = authService.generateTokens(USER_ID).refreshToken;
+
+  assert.notEqual(first, second);
+  assert.ok(jwt.decode(first).jti);
+  assert.notEqual(jwt.decode(first).jti, jwt.decode(second).jti);
 });
