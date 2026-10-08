@@ -15,6 +15,9 @@ convict.addFormat({
   }
 });
 
+// Placeholder secret: fine for local development, refused in production
+const DEFAULT_JWT_SECRET = 'change-me-in-production';
+
 const config = convict({
   env: {
     doc: 'The application environment.',
@@ -60,7 +63,7 @@ const config = convict({
     secret: {
       doc: 'JWT secret key',
       format: 'String',
-      default: 'change-me-in-production',
+      default: DEFAULT_JWT_SECRET,
       env: 'JWT_SECRET'
     },
     accessExpiry: {
@@ -96,6 +99,12 @@ const config = convict({
       format: 'url',
       default: 'http://localhost:5173',
       env: 'FRONTEND_URL'
+    },
+    corsOrigins: {
+      doc: 'Extra allowed CORS origins, comma-separated (FRONTEND_URL is always allowed)',
+      format: 'String',
+      default: '',
+      env: 'CORS_ORIGINS'
     },
     trustProxy: {
       doc: 'Number of reverse-proxy hops to trust for req.ip (0 locally, 1 behind Render)',
@@ -144,7 +153,20 @@ const config = convict({
   }
 });
 
+/**
+ * Refuse to run in production with a missing or placeholder JWT secret:
+ * anyone could forge tokens signed with the public default.
+ */
+const assertProductionSecret = (env, secret) => {
+  if (env === 'production' && (!secret || secret === DEFAULT_JWT_SECRET)) {
+    throw new Error('JWT_SECRET must be set to a non-default value when NODE_ENV=production');
+  }
+};
+
 // Validate on load
 config.validate({ allowed: 'strict' });
+assertProductionSecret(config.get('env'), config.get('jwt.secret'));
 
 module.exports = config;
+module.exports.assertProductionSecret = assertProductionSecret;
+module.exports.DEFAULT_JWT_SECRET = DEFAULT_JWT_SECRET;

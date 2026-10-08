@@ -17,7 +17,11 @@ const { listProductsQueryValidation } = require("../validators/product.validator
 const { authenticate } = require("../middleware/auth.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
 
-const uploadExcel = multer({ storage: multer.memoryStorage() });
+// Bulk upload is a single Excel/CSV file held in memory: cap its size
+const uploadExcel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+});
 
 // ========== RUTAS PÚBLICAS ==========
 // IMPORTANTE: rutas específicas ANTES de rutas con :id para evitar conflictos

@@ -43,13 +43,10 @@ const userSchema = new Schema({
 }, { timestamps: true });
 
 userSchema.pre("save", async function () {
-  // Only hash if password is modified (new or changed)
+  // Only hash if password is modified (new or changed). A hashing error
+  // rejects the hook and fails the save: never store a plain-text password.
   if (this.isModified("password")) {
-    try {
-      this.password = await bcrypt.hash(this.password, 12);
-    } catch (error) {
-      console.log(error);
-    }
+    this.password = await bcrypt.hash(this.password, 12);
   }
 });
 

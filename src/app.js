@@ -27,14 +27,19 @@ app.use(helmet({
 // por ruta en routes/auth.router.js. El límite global rompe navegación
 // normal de usuarios legítimos.
 
-// CORS
+// CORS: only the frontend (FRONTEND_URL) and the extra CORS_ORIGINS
 const cors = require("cors");
-app.use(cors());
+const { buildAllowedOrigins, createCorsOriginCheck } = require("./utils/cors-origins");
+const allowedOrigins = buildAllowedOrigins(
+  config.get("app.frontendUrl"),
+  config.get("app.corsOrigins")
+);
+app.use(cors({ origin: createCorsOriginCheck(allowedOrigins) }));
 
-// Body parsers
-app.use(express.urlencoded({ extended: false }));
+// Body parsers (explicit size limits)
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(express.static("public"));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 // Health check endpoint
 app.get("/health", (req, res) => {
