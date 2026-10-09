@@ -126,9 +126,44 @@ test('createForUser keeps only nombre and cantidad from each product', async () 
   assert.equal('precio' in producto, false);
 });
 
-// ========== Admin list ==========
+// ========== Order model ==========
 
 const { Types } = require('mongoose');
+
+test('Pedido stores the product reference, unit price and order total', () => {
+  const productId = new Types.ObjectId();
+  const pedido = new Pedido({
+    usuario: USER_ID,
+    productos: [{ producto: productId, nombre: 'Cera', cantidad: 2, precio: 1500.5 }],
+    total: 3001,
+  });
+
+  assert.equal(pedido.validateSync(), undefined);
+  const [line] = pedido.productos;
+  assert.equal(String(line.producto), String(productId));
+  assert.equal(line.precio, 1500.5);
+  assert.equal(pedido.total, 3001);
+});
+
+test('Pedido keeps legacy orders without producto, precio or total valid', () => {
+  const pedido = new Pedido({ usuario: USER_ID, productos: [{ nombre: 'Cera', cantidad: 1 }] });
+  assert.equal(pedido.validateSync(), undefined);
+  assert.equal(pedido.total, undefined);
+});
+
+test('Pedido rejects negative prices and totals', () => {
+  const pedido = new Pedido({
+    usuario: USER_ID,
+    productos: [{ producto: new Types.ObjectId(), nombre: 'Cera', cantidad: 1, precio: -1 }],
+    total: -1,
+  });
+  const err = pedido.validateSync();
+  assert.ok(err.errors['productos.0.precio']);
+  assert.ok(err.errors.total);
+});
+
+// ========== Admin list ==========
+
 const { buildPedidoFilter, toAdminOrder } = pedidoService;
 
 test('buildPedidoFilter returns an empty filter without estado or search', () => {
