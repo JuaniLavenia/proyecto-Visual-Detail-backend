@@ -5,11 +5,12 @@
 
 const Pedido = require('../models/Order');
 const User = require('../models/User');
+const Producto = require('../models/Product');
 const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 const { escapeRegex } = require('./product-query');
 const { buildUserFilter } = require('./user.service');
-const { normalizePhone } = require('../validators/pedido.validators');
+const { normalizePhone, MAX_PRODUCT_QUANTITY } = require('../validators/pedido.validators');
 
 const ESTADOS = ['Pendiente', 'Completado', 'Cancelado'];
 const PHONE_LIKE = /^\+?\d+$/;
@@ -61,6 +62,59 @@ const toAdminOrder = (order) => {
   };
 };
 
+/**
+ * Unit price for a buyer role: mayoristas pay the wholesale price when the
+ * product has one; everyone else pays the retail price.
+ */
+const unitPriceFor = (product, role) =>
+  role === 'mayorista' && typeof product.precioMayorista === 'number'
+    ? product.precioMayorista
+    : product.price;
+
+const roundMoney = (value) => Math.round(value * 100) / 100;
+
+/**
+ * Build the stored order lines from validated `{ productId, cantidad }`
+ * lines. Duplicates are merged; name and price always come from the
+ * database, so the client cannot set them.
+ */
+const priceOrderLines = async (productos, role) => {
+  const quantities = new Map();
+  for (const { productId, cantidad } of productos) {
+    const id = String(productId);
+    const merged = (quantities.get(id) || 0) + cantidad;
+    if (merged > MAX_PRODUCT_QUANTITY) {
+      throw new AppError(
+        `La cantidad de un producto no puede superar ${MAX_PRODUCT_QUANTITY}`,
+        400,
+        'VALIDATION_ERROR'
+      );
+    }
+    quantities.set(id, merged);
+  }
+
+  const ids = [...quantities.keys()];
+  const products = await Producto.find({ _id: { $in: ids } })
+    .select('name price precioMayorista')
+    .lean();
+  const byId = new Map(products.map((p) => [String(p._id), p]));
+  if (ids.some((id) => !byId.has(id))) {
+    throw new AppError('Uno o más productos no existen', 400, 'PRODUCT_NOT_FOUND');
+  }
+
+  const lines = ids.map((id) => {
+    const product = byId.get(id);
+    return {
+      producto: product._id,
+      nombre: product.name,
+      cantidad: quantities.get(id),
+      precio: unitPriceFor(product, role),
+    };
+  });
+  const total = roundMoney(lines.reduce((sum, line) => sum + line.precio * line.cantidad, 0));
+  return { lines, total };
+};
+
 class PedidoService {
   /**
    * Get all pedidos with pagination
@@ -108,6 +162,9 @@ class PedidoService {
       );
     }
 
+    // Priced before the profile update, so a rejected order changes nothing
+    const { lines, total } = await priceOrderLines(productos, user.role);
+
     // Profile first: if it fails, no order is created (a client retry
     // would otherwise duplicate the order)
     if (phone !== user.phone) {
@@ -117,7 +174,8 @@ class PedidoService {
     return this.create({
       usuario: user._id,
       telefono: phone,
-      productos: productos.map(({ nombre, cantidad }) => ({ nombre, cantidad })),
+      productos: lines,
+      total,
     });
   }
 

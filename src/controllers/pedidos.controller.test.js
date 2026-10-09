@@ -46,12 +46,13 @@ afterEach(() => {
   pedidoService.createForUser = original.createForUser;
 });
 
-test('createPedido uses the token user and ignores usuario from the body', async () => {
+test('createPedido uses the token user and ignores usuario and total from the body', async () => {
   const user = { _id: 'token-user', phone: '1145678901' };
+  const productos = [{ productId: '64b7f0c2a1b2c3d4e5f60720', cantidad: 1 }];
   const req = {
     user,
     userId: user._id,
-    body: { usuario: 'someone-else', productos: [{ nombre: 'Cera', cantidad: 1 }], telefono: '+541123456789' },
+    body: { usuario: 'someone-else', total: 0, productos, telefono: '+541123456789' },
   };
 
   const { res, err } = await invoke(createPedido, req);
@@ -60,10 +61,7 @@ test('createPedido uses the token user and ignores usuario from the body', async
   assert.equal(res.statusCode, 201);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].user, user);
-  assert.deepEqual(calls[0].data, {
-    productos: [{ nombre: 'Cera', cantidad: 1 }],
-    telefono: '+541123456789',
-  });
+  assert.deepEqual(calls[0].data, { productos, telefono: '+541123456789' });
   assert.equal(res.body.success, true);
 });
 
