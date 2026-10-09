@@ -19,6 +19,8 @@ const request = require('supertest');
 const crypto = require('crypto');
 
 const userService = require('../services/user.service');
+const authService = require('../services/auth.service');
+const passwordResetService = require('../services/password-reset.service');
 const { authLimiter, passwordResetLimiter } = require('../middleware/rate-limiter');
 
 afterEach(restoreStubs);
@@ -141,6 +143,99 @@ test('a rejected login answers the VALIDATION_ERROR contract without echoing the
   assert.ok(!res.text.includes('my-secret-pass'));
 });
 
+// ---------- password rules ----------
+
+const PASSWORD_LENGTH_MESSAGE = 'La contraseña debe tener entre 8 y 72 caracteres';
+const RESET_PATH = `/api/reset/${USER_ID}/some-token`;
+
+const register = (password, confirmation = password) =>
+  request(app)
+    .post('/api/register')
+    .send({ email: 'new@mail.com', password, password_confirmation: confirmation });
+
+const fieldMessages = (res) => res.body.error.details.map((d) => [d.field, d.message]);
+
+for (const [label, password] of [
+  ['7 characters', 'a'.repeat(7)],
+  ['73 characters', 'a'.repeat(73)],
+]) {
+  test(`register rejects a password of ${label}`, async () => {
+    const res = await register(password);
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(fieldMessages(res), [['password', PASSWORD_LENGTH_MESSAGE]]);
+  });
+}
+
+test('register rejects a password that is not a string', async () => {
+  const res = await register(['a'.repeat(10)]);
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(fieldMessages(res), [['password', PASSWORD_LENGTH_MESSAGE]]);
+});
+
+test('register rejects a mismatched confirmation', async () => {
+  const res = await register('a'.repeat(10), 'b'.repeat(10));
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(fieldMessages(res), [['password', 'Las contraseñas no coinciden']]);
+});
+
+test('register accepts passwords of 8 and 72 characters', async () => {
+  const user = { _id: USER_ID, role: 'minorista' };
+  stub(authService, 'register', spy({ user, accessToken: 'a', refreshToken: 'r' }));
+
+  for (const password of ['a'.repeat(8), 'a'.repeat(72)]) {
+    const res = await register(password);
+    assert.equal(res.status, 201);
+  }
+});
+
+test('reset rejects a password shorter than 8 characters', async () => {
+  const reset = stub(passwordResetService, 'resetPassword', spy(undefined));
+
+  const res = await request(app).post(RESET_PATH).send({ password: 'short' });
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(fieldMessages(res), [['password', PASSWORD_LENGTH_MESSAGE]]);
+  assert.equal(reset.calls.length, 0);
+});
+
+test('reset accepts a valid password', async () => {
+  const reset = stub(passwordResetService, 'resetPassword', spy(undefined));
+
+  const res = await request(app).post(RESET_PATH).send({ password: 'long-enough' });
+
+  assert.equal(res.status, 200);
+  assert.equal(reset.calls.length, 1);
+});
+
+test('login keeps accepting short passwords of existing users', async () => {
+  const user = { _id: USER_ID, role: 'minorista' };
+  const login = stub(authService, 'login', spy({ user, accessToken: 'a', refreshToken: 'r' }));
+
+  const res = await request(app).post('/api/login').send({ email: 'old@mail.com', password: '1234' });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(login.calls, [['old@mail.com', '1234']]);
+});
+
+for (const [field, payload] of [
+  ['email', { email: ['a@mail.com'], password: 'whatever' }],
+  ['password', { email: 'a@mail.com', password: { $gt: '' } }],
+]) {
+  test(`login rejects a non-string ${field} with 400`, async () => {
+    const login = stub(authService, 'login', spy(undefined));
+
+    const res = await request(app).post('/api/login').send(payload);
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+    assert.equal(res.body.error.details[0].field, field);
+    assert.equal(login.calls.length, 0);
+  });
+}
+
 // ---------- rate limiters ----------
 
 const AUTH_ROUTES = [
@@ -174,7 +269,13 @@ for (const path of ['/forgot', '/reset/:id/:token']) {
   });
 }
 
+// Supertest connects over loopback: clear every key that address can map to
+const LOOPBACK_KEYS = ['::/56', '127.0.0.1', '::ffff:127.0.0.1'];
+const resetLimiter = (limiter) => Promise.all(LOOPBACK_KEYS.map((key) => limiter.resetKey(key)));
+
 test('POST /forgot answers 429 once the password reset limit is exhausted', async () => {
+  // Earlier reset-password tests share this limiter's bucket
+  await resetLimiter(passwordResetLimiter);
   // Invalid e-mail: the limiter counts the request, validation rejects it before any DB access
   const send = () => request(app).post('/api/forgot').send({ email: 'not-an-email' });
 
