@@ -88,6 +88,44 @@ test('after logout the old refresh token can no longer be refreshed', async () =
   assert.equal(res.body.error.code, 'INVALID_TOKEN');
 });
 
+test('logout with an access token answers 200 but keeps the current session', async () => {
+  const users = stubDefaultUsers();
+  const currentHash = sha256(refreshTokenFor(USER_ID));
+  users.user.refreshToken = currentHash;
+
+  const res = await request(app).post('/api/logout').send({ refreshToken: accessTokenFor(USER_ID) });
+
+  assert.equal(res.status, 200);
+  assert.equal(users.user.refreshToken, currentHash);
+  assert.deepEqual(users.user.saves, []);
+});
+
+test('logout with a stale refresh token answers 200 but keeps the current session', async () => {
+  const users = stubDefaultUsers();
+  const currentHash = sha256('the-current-refresh-token');
+  users.user.refreshToken = currentHash;
+
+  const res = await request(app).post('/api/logout').send({ refreshToken: refreshTokenFor(USER_ID) });
+
+  assert.equal(res.status, 200);
+  assert.equal(users.user.refreshToken, currentHash);
+  assert.deepEqual(users.user.saves, []);
+});
+
+test('logout with a garbage token answers 200', async () => {
+  stubDefaultUsers();
+
+  const res = await request(app).post('/api/logout').send({ refreshToken: 'not-a-jwt' });
+
+  assert.equal(res.status, 200);
+});
+
+test('logout without a token answers 400', async () => {
+  const res = await request(app).post('/api/logout').send({});
+
+  assert.equal(res.status, 400);
+});
+
 // ---------- validation errors ----------
 
 test('a rejected login answers the VALIDATION_ERROR contract without echoing the password', async () => {
