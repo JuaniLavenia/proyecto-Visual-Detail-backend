@@ -4,15 +4,18 @@ const taxonomyService = require('../services/taxonomy.service');
 const Brand = require('../models/Brand');
 const Category = require('../models/Category');
 
-const getBrands = asyncHandler(async (req, res) => {
-  const items = await taxonomyService.list(Brand, { isActive: true });
-  res.json(success(items));
-});
+// `?home=true` narrows the public list to what the admin marked for the home
+const listPublic = (Model) =>
+  asyncHandler(async (req, res) => {
+    const items =
+      req.query.home === 'true'
+        ? await taxonomyService.listForHome(Model)
+        : await taxonomyService.list(Model, { isActive: true });
+    res.json(success(items));
+  });
 
-const getCategories = asyncHandler(async (req, res) => {
-  const items = await taxonomyService.list(Category, { isActive: true });
-  res.json(success(items));
-});
+const getBrands = listPublic(Brand);
+const getCategories = listPublic(Category);
 
 // Listados administrativos: incluyen entradas inactivas (p. ej. las que crea
 // bulkUpsert automaticamente para valores de Excel que no existian) para que

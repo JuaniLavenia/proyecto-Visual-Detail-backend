@@ -171,6 +171,7 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
 | `GET` | `/api/brands`, `/api/categories` | Público | Solo las activas |
+| `GET` | `/api/brands?home=true`, `/api/categories?home=true` | Público | Activas y marcadas para la home (`_id`, `name`, `slug`, `image`), por `sortOrder` y nombre |
 | `GET` | `/api/brands/all`, `/api/categories/all` | Admin | Todas, incluidas las inactivas |
 | `POST` | `/api/brands`, `/api/categories` | Admin | Crear |
 | `PUT` | `/api/brands/:id`, `/api/categories/:id` | Admin | Actualizar (parcial) |
@@ -253,7 +254,9 @@ Body para crear un pedido (el dueño sale del token; nombre y precio salen de la
   "slug": "string (único, derivado del nombre)",
   "isActive": "boolean",
   "sortOrder": "number",
-  "description": "string"
+  "description": "string",
+  "image": "string (vacío o URL http(s), máx. 2048)",
+  "showOnHome": "boolean (default false)"
 }
 ```
 

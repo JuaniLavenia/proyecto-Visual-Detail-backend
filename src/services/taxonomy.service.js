@@ -5,6 +5,16 @@ const { normalizeName } = require('../utils/normalize-name');
 const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
 
+// Fields the public home listing exposes
+const HOME_FIELDS = '_id name slug image';
+const LIST_SORT = { sortOrder: 1, name: 1 };
+
+const normalizeImage = (value) => (typeof value === 'string' ? value.trim() : '');
+
+// The route validators already convert to booleans; this guards direct
+// service callers so the string "false" never becomes true.
+const toBoolean = (value) => value === true || value === 'true' || value === '1' || value === 1;
+
 const buildTaxonomyQuery = (Model, filters = {}) => {
   const query = {};
 
@@ -27,6 +37,8 @@ const normalizeCreatePayload = (payload) => {
     description: typeof payload?.description === 'string' ? payload.description.trim() : '',
     isActive: payload?.isActive !== undefined ? Boolean(payload.isActive) : true,
     sortOrder: Number.isFinite(Number(payload?.sortOrder)) ? Number(payload.sortOrder) : 0,
+    image: normalizeImage(payload?.image),
+    showOnHome: toBoolean(payload?.showOnHome),
     metadata: payload?.metadata || {},
   };
 };
@@ -57,6 +69,14 @@ const normalizeUpdatePayload = (payload) => {
     updates.sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0;
   }
 
+  if (payload?.image !== undefined) {
+    updates.image = normalizeImage(payload.image);
+  }
+
+  if (payload?.showOnHome !== undefined) {
+    updates.showOnHome = toBoolean(payload.showOnHome);
+  }
+
   if (payload?.metadata !== undefined) {
     updates.metadata = payload.metadata || {};
   }
@@ -67,7 +87,12 @@ const normalizeUpdatePayload = (payload) => {
 class TaxonomyService {
   async list(Model, filters = {}) {
     const query = buildTaxonomyQuery(Model, filters);
-    return Model.find(query).sort({ sortOrder: 1, name: 1 }).lean();
+    return Model.find(query).sort(LIST_SORT).lean();
+  }
+
+  // Public home: active entries the admin marked to show on the home
+  async listForHome(Model) {
+    return Model.find({ isActive: true, showOnHome: true }).select(HOME_FIELDS).sort(LIST_SORT).lean();
   }
 
   async create(Model, payload) {
