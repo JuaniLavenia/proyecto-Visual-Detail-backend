@@ -29,11 +29,8 @@ const getPedidos = asyncHandler(async (req, res, next) => {
 });
 
 const cancelPedido = asyncHandler(async (req, res, next) => {
+  // findById throws 404 PEDIDO_NOT_FOUND when the order does not exist
   const pedido = await pedidoService.findById(req.params.id);
-
-  if (!pedido) {
-    throw new AppError('Pedido no encontrado', 404, 'NOT_FOUND');
-  }
 
   const currentUserId = req.userId?.toString();
   const isAdmin = req.userRole === 'admin';
@@ -59,28 +56,14 @@ const cancelPedido = asyncHandler(async (req, res, next) => {
 
 const modificarEstadoPedido = asyncHandler(async (req, res, next) => {
   const { nuevoEstado } = req.body;
+  // findById throws 404 PEDIDO_NOT_FOUND; the route validator restricts nuevoEstado
   const pedido = await pedidoService.findById(req.params.id);
-
-  if (!pedido) {
-    throw new AppError('Pedido no encontrado', 404, 'NOT_FOUND');
-  }
 
   const currentUserId = req.userId?.toString();
   const isAdmin = req.userRole === 'admin';
 
   if (!isAdmin && pedido.usuario.toString() !== currentUserId) {
     throw new AppError('Solo podés modificar tus propios pedidos', 403, 'FORBIDDEN');
-  }
-
-  const estadosPermitidos = ['Pendiente', 'Completado', 'Cancelado'];
-  if (!estadosPermitidos.includes(nuevoEstado)) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        message: 'Estado no válido',
-        code: 'INVALID_STATE'
-      }
-    });
   }
 
   // Owners may only cancel a pending order (same rule as /pedido/cancelar);
@@ -148,19 +131,8 @@ const getRecentPedidos = asyncHandler(async (req, res, next) => {
  * Update order status (admin only)
  */
 const updatePedidoStatus = asyncHandler(async (req, res, next) => {
+  // The route validator restricts nuevoEstado to the order statuses
   const { nuevoEstado } = req.body;
-
-  const estadosPermitidos = ['Pendiente', 'Completado', 'Cancelado'];
-  if (!estadosPermitidos.includes(nuevoEstado)) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        message: 'Estado no válido',
-        code: 'INVALID_STATE'
-      }
-    });
-  }
-
   const pedido = await pedidoService.update(req.params.id, { estado: nuevoEstado });
   res.json(success({ pedido }, 'Estado actualizado'));
 });

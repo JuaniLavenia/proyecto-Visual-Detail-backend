@@ -8,7 +8,6 @@ const brandSchema = new Schema(
       required: true,
       trim: true,
       unique: true,
-      index: true,
     },
     slug: {
       type: String,
@@ -16,7 +15,6 @@ const brandSchema = new Schema(
       trim: true,
       unique: true,
       lowercase: true,
-      index: true,
       default: function defaultSlug() {
         return slugify(this.name || '');
       },

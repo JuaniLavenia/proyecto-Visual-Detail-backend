@@ -8,7 +8,7 @@ const User = require('../models/User');
 const Order = require('../models/Order');
 const CartItem = require('../models/Cart');
 const Favorite = require('../models/Favorite');
-const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
+const { sanitizeUpdateQuery } = require('../utils/query-sanitizer');
 const { AppError } =require('../middleware/error.middleware');
 const { escapeRegex } = require('./product-query');
 
@@ -103,18 +103,6 @@ class UserService {
       throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
     }
     return user.toJSON();
-  }
-
-  /**
-   * Find user by email
-   */
-  async findByEmail(email) {
-    const sanitizedQuery = sanitizeFindQuery({ email: email.toLowerCase() });
-    const user = await User.findOne(sanitizedQuery);
-    if (!user) {
-      throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
-    }
-    return user;
   }
 
   /**

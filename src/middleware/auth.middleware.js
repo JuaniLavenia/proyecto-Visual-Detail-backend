@@ -68,46 +68,6 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-/**
- * Optional authentication middleware
- * If a token is provided, it will be validated and req.user will be populated.
- * If no token is provided, the request continues without authentication.
- * Use this for routes that work both authenticated and unauthenticated.
- */
-const optionalAuth = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return next();
-    }
-
-    const token = authHeader.split(' ')[1];
-
-    const decoded = jwt.verify(token, config.get('jwt.secret'));
-
-    // A non-access token (e.g. a refresh token) is treated as anonymous
-    if (decoded.type !== ACCESS_TOKEN_TYPE) {
-      return next();
-    }
-
-    const user = await User.findById(decoded.uid).select('-password -refreshToken');
-
-    // An inactive user is treated as anonymous (legacy: missing isActive = active)
-    if (user && user.isActive !== false) {
-      req.user = user;
-      req.userId = user._id;
-      req.userRole = user.role;
-    }
-
-    next();
-  } catch (error) {
-    // Token invalid or expired — continue without auth (it's optional)
-    next();
-  }
-};
-
 module.exports = {
-  authenticate,
-  optionalAuth
+  authenticate
 };
