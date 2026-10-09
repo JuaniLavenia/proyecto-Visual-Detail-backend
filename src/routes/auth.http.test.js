@@ -149,6 +149,16 @@ test('a rejected login answers the VALIDATION_ERROR contract without echoing the
   assert.ok(!res.text.includes('my-secret-pass'));
 });
 
+test('a malformed JSON body answers 400 INVALID_JSON', async () => {
+  const res = await request(app)
+    .post('/api/register')
+    .set('Content-Type', 'application/json')
+    .send('{"email": "a@mail.com", "password": ');
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body, { success: false, error: { message: 'JSON inválido', code: 'INVALID_JSON' } });
+});
+
 // ---------- password rules ----------
 
 const PASSWORD_LENGTH_MESSAGE = 'La contraseña debe tener entre 8 y 72 caracteres';

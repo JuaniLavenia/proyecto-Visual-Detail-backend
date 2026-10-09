@@ -17,6 +17,10 @@ convict.addFormat({
 
 // Placeholder secret: fine for local development, refused in production
 const DEFAULT_JWT_SECRET = 'change-me-in-production';
+// Public placeholders (code default and .env-example) nobody may sign with
+const PLACEHOLDER_JWT_SECRETS = [DEFAULT_JWT_SECRET, 'your-super-secret-key-change-in-production'];
+// Only an explicit NODE_ENV of these values may run with a placeholder secret
+const PLACEHOLDER_SECRET_ENVS = ['development', 'test'];
 
 const config = convict({
   env: {
@@ -154,18 +158,22 @@ const config = convict({
 });
 
 /**
- * Refuse to run in production with a missing or placeholder JWT secret:
- * anyone could forge tokens signed with the public default.
+ * Refuse a missing or placeholder JWT secret unless NODE_ENV is explicitly
+ * development or test: anyone could forge tokens signed with a public value.
+ * Takes the raw NODE_ENV, since convict defaults an unset one to development.
  */
-const assertProductionSecret = (env, secret) => {
-  if (env === 'production' && (!secret || secret === DEFAULT_JWT_SECRET)) {
-    throw new Error('JWT_SECRET must be set to a non-default value when NODE_ENV=production');
+const assertProductionSecret = (rawEnv, secret) => {
+  if (PLACEHOLDER_SECRET_ENVS.includes(rawEnv)) return;
+  if (!secret || PLACEHOLDER_JWT_SECRETS.includes(secret)) {
+    throw new Error(
+      'JWT_SECRET must be set to a non-default value unless NODE_ENV is development or test'
+    );
   }
 };
 
 // Validate on load
 config.validate({ allowed: 'strict' });
-assertProductionSecret(config.get('env'), config.get('jwt.secret'));
+assertProductionSecret(process.env.NODE_ENV, config.get('jwt.secret'));
 
 module.exports = config;
 module.exports.assertProductionSecret = assertProductionSecret;
