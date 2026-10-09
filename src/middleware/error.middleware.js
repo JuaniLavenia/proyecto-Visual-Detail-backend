@@ -3,7 +3,10 @@
  * Handles all errors consistently
  */
 
-const config = require('../config');
+// Internals (stack traces, raw messages) are exposed only when NODE_ENV is
+// explicitly `development`: a deploy that forgets NODE_ENV stays safe.
+// Read per request rather than from the config default (`development`).
+const isDevelopment = () => process.env.NODE_ENV === 'development';
 
 class AppError extends Error {
   constructor(message, statusCode, code = null) {
@@ -17,7 +20,7 @@ class AppError extends Error {
 
 const errorMiddleware = (err, req, res, next) => {
   // Log error in development
-  if (config.get('env') === 'development') {
+  if (isDevelopment()) {
     console.error('Error:', err.message);
     console.error('Stack:', err.stack);
   }
@@ -40,6 +43,10 @@ const errorMiddleware = (err, req, res, next) => {
     statusCode = 409;
     message = 'Duplicate entry';
     code = 'DUPLICATE_ENTRY';
+  } else if (err.name === 'MulterError') {
+    statusCode = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    message = err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : 'Invalid upload';
+    code = err.code === 'LIMIT_FILE_SIZE' ? 'FILE_TOO_LARGE' : 'UPLOAD_ERROR';
   } else if (err.name === 'JsonWebTokenError') {
     statusCode = 401;
     message = 'Invalid token';
@@ -49,8 +56,8 @@ const errorMiddleware = (err, req, res, next) => {
     message = 'Token expired';
     code = 'TOKEN_EXPIRED';
   } else if (!err.isOperational) {
-    // Hide internal errors in production
-    if (config.get('env') === 'production') {
+    // Hide internal errors unless explicitly in development
+    if (!isDevelopment()) {
       message = 'Internal server error';
     }
   }
@@ -65,7 +72,7 @@ const errorMiddleware = (err, req, res, next) => {
   };
 
   // Add stack trace in development only
-  if (config.get('env') === 'development' && err.stack) {
+  if (isDevelopment() && err.stack) {
     response.error.stack = err.stack;
   }
 

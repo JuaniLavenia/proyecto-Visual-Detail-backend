@@ -13,7 +13,7 @@ const originalFindById = User.findById;
 let fakeUser;
 
 const accessTokenFor = (userId) =>
-  jwt.sign({ uid: userId }, config.get('jwt.secret'), { expiresIn: '15m' });
+  jwt.sign({ uid: userId, type: 'access' }, config.get('jwt.secret'), { expiresIn: '15m' });
 
 const run = (req) =>
   new Promise((resolve) => {
@@ -94,4 +94,53 @@ test('optionalAuth treats an inactive user as anonymous', async () => {
   assert.equal(req.user, undefined);
   assert.equal(req.userId, undefined);
   assert.equal(req.userRole, undefined);
+});
+
+
+// ---------- token type ----------
+
+const refreshTokenFor = (userId) =>
+  jwt.sign({ uid: userId, type: 'refresh' }, config.get('jwt.secret'), { expiresIn: '7d' });
+
+const requestWithBearer = (token) => ({ headers: { authorization: `Bearer ${token}` } });
+
+test('authenticate rejects a refresh token used as Bearer with 401 INVALID_TOKEN', async () => {
+  const req = requestWithBearer(refreshTokenFor(USER_ID));
+
+  const err = await run(req);
+
+  assert.equal(err.statusCode, 401);
+  assert.equal(err.code, 'INVALID_TOKEN');
+  assert.equal(req.user, undefined);
+});
+
+test('authenticate rejects a token without a type claim', async () => {
+  const legacy = jwt.sign({ uid: USER_ID }, config.get('jwt.secret'), { expiresIn: '15m' });
+  const req = requestWithBearer(legacy);
+
+  const err = await run(req);
+
+  assert.equal(err.statusCode, 401);
+  assert.equal(err.code, 'INVALID_TOKEN');
+});
+
+test('authenticate accepts an access token issued by the auth service', async () => {
+  const authService = require('../services/auth.service');
+  const { accessToken } = authService.generateTokens(USER_ID);
+  const req = requestWithBearer(accessToken);
+
+  const err = await run(req);
+
+  assert.equal(err, undefined);
+  assert.equal(req.user, fakeUser);
+});
+
+test('optionalAuth treats a refresh token as anonymous', async () => {
+  const req = requestWithBearer(refreshTokenFor(USER_ID));
+
+  const err = await runOptional(req);
+
+  assert.equal(err, undefined);
+  assert.equal(req.user, undefined);
+  assert.equal(req.userId, undefined);
 });

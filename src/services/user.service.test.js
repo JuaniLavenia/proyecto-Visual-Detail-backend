@@ -14,6 +14,8 @@ const original = {
   findById: User.findById,
   exists: User.exists,
   deleteOne: User.deleteOne,
+  updateMany: User.updateMany,
+  startSession: User.startSession,
   orderExists: Order.exists,
   cartDeleteMany: CartItem.deleteMany,
   favoriteDeleteMany: Favorite.deleteMany,
@@ -26,7 +28,7 @@ let takenEmails;
 let ordersByUser;
 
 beforeEach(() => {
-  received = { find: [], count: [], deleted: [], cartDeleted: [], favoritesDeleted: [], exists: [] };
+  received = { find: [], count: [], deleted: [], cartDeleted: [], favoritesDeleted: [], exists: [], touched: [], sessions: [] };
   countsByFilter = {};
   docsById = {};
   takenEmails = new Set();
@@ -68,9 +70,28 @@ beforeEach(() => {
         received.limit = limit;
         return chain;
       },
+      session: () => chain,
       lean: async () => [{ _id: 'u1', email: 'a@mail.com' }],
     };
     return chain;
+  };
+  User.updateMany = async (filter) => {
+    received.touched.push(filter);
+    return { modifiedCount: 1 };
+  };
+  // Default transaction stub: every operation succeeds and commits
+  User.startSession = async () => {
+    const session = {
+      active: false,
+      committed: false,
+      startTransaction() { this.active = true; },
+      inTransaction() { return this.active; },
+      async commitTransaction() { this.active = false; this.committed = true; },
+      async abortTransaction() { this.active = false; },
+      async endSession() {},
+    };
+    received.sessions.push(session);
+    return session;
   };
   User.countDocuments = async (filter) => {
     received.count.push(filter);
@@ -84,6 +105,8 @@ afterEach(() => {
   User.findById = original.findById;
   User.exists = original.exists;
   User.deleteOne = original.deleteOne;
+  User.updateMany = original.updateMany;
+  User.startSession = original.startSession;
   Order.exists = original.orderExists;
   CartItem.deleteMany = original.cartDeleteMany;
   Favorite.deleteMany = original.favoriteDeleteMany;
@@ -474,4 +497,189 @@ test('deleteByAdmin rejects an unknown user with 404 USER_NOT_FOUND', async () =
 test('legacy findAll and delete helpers are gone', () => {
   assert.equal(userService.findAll, undefined);
   assert.equal(userService.delete, undefined);
+});
+
+// ---------- atomic last-admin guard ----------
+
+const OTHER_ADMIN_ID = '64b7f0c2a1b2c3d4e5f60703';
+
+// Minimal model of MongoDB transactions: reads see committed data, and a
+// document already written by another transaction (pending, or committed after
+// this one started) aborts the write with a TransientTransactionError
+// WriteConflict (first writer wins).
+const createTxnStore = (adminIds) => {
+  let commitSeq = 0;
+  const docs = new Map(
+    adminIds.map((id) => [id, { role: 'admin', isActive: true, deleted: false, committedAt: 0, pendingBy: null }])
+  );
+
+  const writeConflict = () => {
+    const err = new Error('WriteConflict');
+    err.code = 112;
+    err.errorLabels = ['TransientTransactionError'];
+    err.hasErrorLabel = (label) => err.errorLabels.includes(label);
+    return err;
+  };
+
+  const write = (session, id, changes) => {
+    const doc = docs.get(String(id));
+    if ((doc.pendingBy && doc.pendingBy !== session) || doc.committedAt > session.startedAt) {
+      throw writeConflict();
+    }
+    doc.pendingBy = session;
+    session.pending.set(String(id), { ...(session.pending.get(String(id)) || {}), ...changes });
+  };
+
+  const startSession = async () => ({
+    pending: new Map(),
+    active: false,
+    startTransaction() {
+      this.active = true;
+      this.startedAt = commitSeq;
+    },
+    inTransaction() {
+      return this.active;
+    },
+    async commitTransaction() {
+      commitSeq += 1;
+      for (const [id, changes] of this.pending) {
+        Object.assign(docs.get(id), changes, { committedAt: commitSeq, pendingBy: null });
+      }
+      this.pending.clear();
+      this.active = false;
+    },
+    async abortTransaction() {
+      for (const id of this.pending.keys()) {
+        docs.get(id).pendingBy = null;
+      }
+      this.pending.clear();
+      this.active = false;
+    },
+    async endSession() {},
+  });
+
+  const activeAdminIds = () =>
+    [...docs].filter(([, d]) => !d.deleted && d.role === 'admin' && d.isActive !== false).map(([id]) => id);
+
+  return { write, startSession, activeAdminIds };
+};
+
+// Both guarded transactions read the other admins before either one writes:
+// the interleaving a check-then-act guard cannot survive.
+const installRace = (store, readers = 2) => {
+  const waiting = [];
+  const bothRead = () =>
+    new Promise((resolve) => {
+      waiting.push(resolve);
+      if (waiting.length === readers) waiting.forEach((release) => release());
+    });
+
+  User.startSession = store.startSession;
+  User.find = (filter) => {
+    const chain = {
+      select: () => chain,
+      session: () => chain,
+      lean: async () => {
+        const admins = store.activeAdminIds().map((id) => ({ _id: id }));
+        await bothRead();
+        return admins;
+      },
+    };
+    return chain;
+  };
+  // Like MongoDB's $in scan on _id: documents are written in ascending _id order
+  User.updateMany = async (filter, update, options) => {
+    [...filter._id.$in].sort().forEach((id) => store.write(options.session, id, {}));
+    return { modifiedCount: filter._id.$in.length };
+  };
+  User.deleteOne = async (filter, options) => {
+    store.write(options.session, filter._id, { deleted: true });
+    return { deletedCount: 1 };
+  };
+};
+
+const addTxnAdmin = (store, id) =>
+  addDoc({
+    _id: id,
+    id,
+    email: `${id}@mail.com`,
+    role: 'admin',
+    async save(options) {
+      this.saveCount += 1;
+      store.write(options.session, this._id, { role: this.role, isActive: this.isActive });
+      return this;
+    },
+  });
+
+test('two concurrent demotions of the last two admins: the second write is refused', async () => {
+  const store = createTxnStore([TARGET_ID, OTHER_ADMIN_ID]);
+  installRace(store);
+  addTxnAdmin(store, TARGET_ID);
+  addTxnAdmin(store, OTHER_ADMIN_ID);
+  setActiveAdmins(2); // both pre-checks see two active admins
+
+  const results = await Promise.allSettled([
+    userService.updateByAdmin(TARGET_ID, OTHER_ADMIN_ID, { role: 'minorista' }),
+    userService.updateByAdmin(OTHER_ADMIN_ID, TARGET_ID, { isActive: false }),
+  ]);
+
+  const rejected = results.filter((r) => r.status === 'rejected');
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.statusCode, 409);
+  assert.equal(rejected[0].reason.code, 'CONCURRENT_UPDATE');
+  assert.equal(store.activeAdminIds().length, 1);
+});
+
+test('a concurrent delete and demotion of the last two admins never leave zero admins', async () => {
+  const store = createTxnStore([TARGET_ID, OTHER_ADMIN_ID]);
+  installRace(store);
+  addTxnAdmin(store, TARGET_ID);
+  addTxnAdmin(store, OTHER_ADMIN_ID);
+  setActiveAdmins(2);
+
+  const results = await Promise.allSettled([
+    userService.deleteByAdmin(TARGET_ID, OTHER_ADMIN_ID),
+    userService.updateByAdmin(OTHER_ADMIN_ID, TARGET_ID, { role: 'mayorista' }),
+  ]);
+
+  assert.equal(results.filter((r) => r.status === 'rejected').length, 1);
+  assert.equal(store.activeAdminIds().length, 1);
+});
+
+test('the guard refuses at write time when no other active admin remains', async () => {
+  const store = createTxnStore([TARGET_ID]);
+  installRace(store, 1);
+  const doc = addTxnAdmin(store, TARGET_ID);
+  setActiveAdmins(2); // stale pre-check: the other admin is gone at write time
+
+  await assert.rejects(userService.updateByAdmin(TARGET_ID, ACTOR_ID, { role: 'minorista' }), {
+    statusCode: 409,
+    code: 'LAST_ADMIN',
+  });
+  assert.equal(doc.saveCount, 0);
+  assert.deepEqual(store.activeAdminIds(), [TARGET_ID]);
+});
+
+test('a guarded demotion touches the remaining admins and commits in one transaction', async () => {
+  const doc = addDoc({ role: 'admin' });
+  setActiveAdmins(2);
+
+  await userService.updateByAdmin(TARGET_ID, ACTOR_ID, { role: 'minorista' });
+
+  assert.equal(doc.saveCount, 1);
+  assert.equal(received.sessions.length, 1);
+  assert.equal(received.sessions[0].committed, true);
+  assert.deepEqual(received.touched, [{ _id: { $in: ['u1'] } }]);
+});
+
+test('changes that cannot remove an admin do not open a transaction', async () => {
+  addDoc();
+  addDoc({ _id: OTHER_ADMIN_ID, id: OTHER_ADMIN_ID, role: 'admin', isActive: false });
+
+  await userService.updateByAdmin(TARGET_ID, ACTOR_ID, { role: 'mayorista' });
+  await userService.updateByAdmin(OTHER_ADMIN_ID, ACTOR_ID, { role: 'minorista' });
+  await userService.deleteByAdmin(TARGET_ID, ACTOR_ID);
+
+  assert.equal(received.sessions.length, 0);
 });

@@ -15,6 +15,24 @@ const { escapeRegex } = require('./product-query');
 const notFoundError = () => new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
 const emailInUseError = () =>
   new AppError('El correo ya está en uso por otro usuario', 409, 'EMAIL_IN_USE');
+const lastAdminError = () =>
+  new AppError(
+    'No se puede desactivar, eliminar ni quitar el rol al último administrador activo',
+    409,
+    'LAST_ADMIN'
+  );
+const concurrentAdminChangeError = () =>
+  new AppError(
+    'Otro administrador modificó usuarios al mismo tiempo. Reintentá la operación',
+    409,
+    'CONCURRENT_UPDATE'
+  );
+
+// MongoDB WriteConflict inside a transaction (labelled TransientTransactionError)
+const isWriteConflict = (err) =>
+  Boolean(err) &&
+  (err.code === 112 ||
+    (typeof err.hasErrorLabel === 'function' && err.hasErrorLabel('TransientTransactionError')));
 
 // A concurrent request can pass the availability check and still hit the
 // unique index on save: report it as the same domain error.
@@ -181,12 +199,13 @@ class UserService {
    * - an admin cannot deactivate, delete or change the role of their own account;
    * - the last active admin cannot be deactivated, deleted or demoted.
    *
-   * Check-then-act: two concurrent requests can each see two active admins
-   * and both proceed. Acceptable for a small admin team; see the B3 report.
+   * The count here is only a fast path with a clear error. Returns true when
+   * the write can remove an active admin: the caller must then run it through
+   * withLastAdminGuard, which re-checks atomically at write time.
    */
   async assertAdminSafety(target, actorId, { remove = false, roleChange = false, deactivate = false } = {}) {
     if (!remove && !roleChange && !deactivate) {
-      return;
+      return false;
     }
 
     if (actorId != null && String(target._id) === String(actorId)) {
@@ -198,15 +217,58 @@ class UserService {
     }
 
     const isActiveAdmin = target.role === 'admin' && target.isActive !== false;
-    if (isActiveAdmin && (remove || roleChange || deactivate)) {
-      const activeAdmins = await User.countDocuments(ACTIVE_ADMINS_FILTER());
-      if (activeAdmins <= 1) {
-        throw new AppError(
-          'No se puede desactivar, eliminar ni quitar el rol al último administrador activo',
-          409,
-          'LAST_ADMIN'
-        );
+    if (!isActiveAdmin) {
+      return false;
+    }
+
+    const activeAdmins = await User.countDocuments(ACTIVE_ADMINS_FILTER());
+    if (activeAdmins <= 1) {
+      throw lastAdminError();
+    }
+    return true;
+  }
+
+  /**
+   * Last-admin guard at write time: runs `write(session)` in a transaction
+   * that first re-reads the other active admins and refuses if none remain.
+   *
+   * Snapshot isolation alone still allows write skew (two transactions each
+   * demote a different admin while seeing the other one active), so the
+   * transaction also touches every active admin, the target included, in one
+   * updateMany. Two concurrent guarded writes then always write a common
+   * document: MongoDB aborts the later one with a WriteConflict and that
+   * request gets 409 CONCURRENT_UPDATE. The `_id` $in scan writes in a fixed
+   * order, so one of them wins instead of both aborting. No automatic retry:
+   * a retried save() of an already-saved document would send nothing.
+   * Requires a replica set (Atlas); standalone mongod has no transactions.
+   */
+  async withLastAdminGuard(target, write) {
+    const session = await User.startSession();
+    try {
+      session.startTransaction();
+
+      const activeAdmins = await User.find(ACTIVE_ADMINS_FILTER())
+        .select('_id')
+        .session(session)
+        .lean();
+      if (!activeAdmins.some((admin) => String(admin._id) !== String(target._id))) {
+        throw lastAdminError();
       }
+
+      await User.updateMany(
+        { _id: { $in: activeAdmins.map((admin) => admin._id) } },
+        { $set: { updatedAt: new Date() } },
+        { session, timestamps: false }
+      );
+      await write(session);
+      await session.commitTransaction();
+    } catch (err) {
+      if (session.inTransaction()) {
+        await session.abortTransaction().catch(() => {});
+      }
+      throw isWriteConflict(err) ? concurrentAdminChangeError() : err;
+    } finally {
+      await session.endSession();
     }
   }
 
@@ -246,7 +308,7 @@ class UserService {
 
     const roleChange = updates.role !== undefined && updates.role !== user.role;
     const deactivate = updates.isActive === false && user.isActive !== false;
-    await this.assertAdminSafety(user, actorId, { roleChange, deactivate });
+    const guarded = await this.assertAdminSafety(user, actorId, { roleChange, deactivate });
 
     if (updates.email !== undefined) {
       const email = String(updates.email).trim().toLowerCase();
@@ -270,7 +332,11 @@ class UserService {
     }
 
     try {
-      await user.save();
+      if (guarded) {
+        await this.withLastAdminGuard(user, (session) => user.save({ session }));
+      } else {
+        await user.save();
+      }
     } catch (err) {
       throw mapDuplicateEmail(err);
     }
@@ -295,7 +361,7 @@ class UserService {
       throw notFoundError();
     }
 
-    await this.assertAdminSafety(user, actorId, { remove: true });
+    const guarded = await this.assertAdminSafety(user, actorId, { remove: true });
 
     if (await Order.exists({ usuario: user._id })) {
       throw new AppError(
@@ -305,7 +371,11 @@ class UserService {
       );
     }
 
-    await User.deleteOne({ _id: user._id });
+    if (guarded) {
+      await this.withLastAdminGuard(user, (session) => User.deleteOne({ _id: user._id }, { session }));
+    } else {
+      await User.deleteOne({ _id: user._id });
+    }
     await Promise.all([
       CartItem.deleteMany({ userId: user._id }),
       Favorite.deleteMany({ userId: user._id }),

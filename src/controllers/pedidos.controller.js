@@ -83,6 +83,23 @@ const modificarEstadoPedido = asyncHandler(async (req, res, next) => {
     });
   }
 
+  // Owners may only cancel a pending order (same rule as /pedido/cancelar);
+  // completing or reopening an order is an admin decision.
+  if (!isAdmin) {
+    if (nuevoEstado !== 'Cancelado') {
+      throw new AppError('Solo un administrador puede cambiar el pedido a ese estado', 403, 'FORBIDDEN');
+    }
+    if (pedido.estado !== 'Pendiente') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'No se puede cancelar un pedido que no está pendiente',
+          code: 'INVALID_STATE'
+        }
+      });
+    }
+  }
+
   const updated = await pedidoService.update(req.params.id, { estado: nuevoEstado });
   res.json(success({ pedido: updated }, 'Estado actualizado'));
 });

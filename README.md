@@ -71,11 +71,26 @@ npm run dev     # Iniciar con nodemon (desarrollo)
 Variables de entorno en `.env` (ver `.env-example`):
 
 ```env
+NODE_ENV=development
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/visual-detail
 JWT_SECRET=tu-secret-aqui
-CLIENT_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:5173
+# Orígenes extra separados por coma (opcional)
+CORS_ORIGINS=
 ```
+
+### Base de datos de desarrollo
+
+En local, `MONGODB_URI` debe apuntar a una base de **desarrollo**, nunca a la de producción: la de producción tiene clientes reales y cualquier prueba que envíe mails (recuperación de contraseña, invitaciones) les llegaría a ellos.
+
+Para poblar la base de desarrollo, copiar las colecciones de catálogo desde producción (por ejemplo con `mongodump`/`mongorestore` o exportando desde Compass) y **no** copiar usuarios ni pedidos reales. Para probar, crear usuarios descartables con emails `@example.test`.
+
+### Producción
+
+- `NODE_ENV=production` y un `JWT_SECRET` propio: el servidor no arranca con el secret por defecto.
+- `FRONTEND_URL` debe ser la URL real del frontend; otros orígenes van en `CORS_ORIGINS`.
+- Los cambios de rol, desactivación y borrado de admins usan transacciones, que requieren un replica set (Atlas lo tiene).
 
 ## Formato de respuestas
 
@@ -231,5 +246,5 @@ docker build -t visual-detail-backend .
 docker run -p 5000:5000 visual-detail-backend
 
 # Variables necesarias
-# MONGODB_URI, JWT_SECRET, CLIENT_URL
+# NODE_ENV=production, MONGODB_URI, JWT_SECRET, FRONTEND_URL
 ```
