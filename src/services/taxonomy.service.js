@@ -1,5 +1,6 @@
 const { AppError } = require('../middleware/error.middleware');
 const Producto = require('../models/Product');
+const { normalizeName } = require('../utils/normalize-name');
 
 const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
@@ -15,7 +16,7 @@ const buildTaxonomyQuery = (Model, filters = {}) => {
 };
 
 const normalizeCreatePayload = (payload) => {
-  const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
+  const name = typeof payload?.name === 'string' ? normalizeName(payload.name) : '';
 
   if (!name) {
     throw new AppError('El nombre es requerido', 400, 'TAXONOMY_NAME_REQUIRED');
@@ -37,7 +38,7 @@ const normalizeUpdatePayload = (payload) => {
   const updates = {};
 
   if (payload?.name !== undefined) {
-    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    const name = typeof payload.name === 'string' ? normalizeName(payload.name) : '';
     if (!name) {
       throw new AppError('El nombre es requerido', 400, 'TAXONOMY_NAME_REQUIRED');
     }

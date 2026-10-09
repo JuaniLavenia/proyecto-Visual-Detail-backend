@@ -8,6 +8,7 @@ const ProductBrand = require('../models/Brand');
 const ProductCategory = require('../models/Category');
 const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
+const { normalizeName } = require('../utils/normalize-name');
 const {
   buildSort,
   buildProductFilter,
@@ -103,9 +104,17 @@ const resolveOrCreateTaxonomyEntry = async (Model, rawValue, catalog) => {
     return match.name;
   }
 
-  const created = await Model.create({ name: trimmed, isActive: false });
+  const created = await Model.create({ name: normalizeName(trimmed), isActive: false });
   catalog.push(created.toObject());
   return created.name;
+};
+
+// Name normalization lives here (not as a schema setter) because update
+// and bulkWrite/replaceOne do not run setters on every path.
+const applyNormalizedName = (data) => {
+  if (data.name !== undefined) {
+    data.name = normalizeName(data.name);
+  }
 };
 
 class ProductService {
@@ -210,6 +219,8 @@ class ProductService {
       }
     }
 
+    applyNormalizedName(sanitizedData);
+
     const hasBrand = hasTaxonomyValue(sanitizedData.brand);
     const hasCategory = hasTaxonomyValue(sanitizedData.category);
 
@@ -242,6 +253,8 @@ class ProductService {
         sanitizedData[field] = updateData[field];
       }
     }
+
+    applyNormalizedName(sanitizedData);
 
     const current = await Producto.findById(id).lean();
     if (!current) {
@@ -326,6 +339,9 @@ class ProductService {
       }
 
       const sanitizedData = sanitizeObject(filteredData);
+      // Normalized before building the upsert filter so a re-import matches
+      // the stored (already normalized) name.
+      applyNormalizedName(sanitizedData);
 
       if (hasTaxonomyValue(sanitizedData.brand)) {
         sanitizedData.brand = await resolveOrCreateTaxonomyEntry(ProductBrand, sanitizedData.brand, brandCatalog);
