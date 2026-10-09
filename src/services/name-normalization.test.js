@@ -111,6 +111,8 @@ test('taxonomy update stores the normalized name', async () => {
   const category = new Category({ name: 'Ceras' });
   stub(category, 'save', async () => category);
   stub(Category, 'findById', async () => category);
+  stub(Category, 'exists', async () => null);
+  stub(Producto, 'updateMany', async () => ({ modifiedCount: 0 }));
 
   await taxonomyService.update(Category, category._id, { name: ' línea   pro ' });
 

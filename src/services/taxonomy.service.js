@@ -5,6 +5,41 @@ const { normalizeName } = require('../utils/normalize-name');
 const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, '\\$&');
 
+// Case-insensitive exact match on a stored name (products reference
+// brands/categories by name)
+const matchName = (name) => ({ $regex: `^${escapeRegex(name)}$`, $options: 'i' });
+
+const productFieldFor = (Model) => (Model.modelName === 'Brand' ? 'brand' : 'category');
+
+const nameTakenError = (Model) =>
+  new AppError(
+    `Ya existe ${Model.modelName === 'Brand' ? 'una marca' : 'una categoría'} con ese nombre`,
+    409,
+    'TAXONOMY_NAME_TAKEN',
+  );
+
+const isDuplicateKeyError = (err) => err?.code === 11000;
+
+// Safety net for races and slug collisions: the unique indexes win
+const saveUnique = async (Model, item) => {
+  try {
+    return await item.save();
+  } catch (err) {
+    if (isDuplicateKeyError(err)) throw nameTakenError(Model);
+    throw err;
+  }
+};
+
+// Fields the public home listing exposes
+const HOME_FIELDS = '_id name slug image';
+const LIST_SORT = { sortOrder: 1, name: 1 };
+
+const normalizeImage = (value) => (typeof value === 'string' ? value.trim() : '');
+
+// The route validators already convert to booleans; this guards direct
+// service callers so the string "false" never becomes true.
+const toBoolean = (value) => value === true || value === 'true' || value === '1' || value === 1;
+
 const buildTaxonomyQuery = (Model, filters = {}) => {
   const query = {};
 
@@ -27,6 +62,8 @@ const normalizeCreatePayload = (payload) => {
     description: typeof payload?.description === 'string' ? payload.description.trim() : '',
     isActive: payload?.isActive !== undefined ? Boolean(payload.isActive) : true,
     sortOrder: Number.isFinite(Number(payload?.sortOrder)) ? Number(payload.sortOrder) : 0,
+    image: normalizeImage(payload?.image),
+    showOnHome: toBoolean(payload?.showOnHome),
     metadata: payload?.metadata || {},
   };
 };
@@ -57,6 +94,14 @@ const normalizeUpdatePayload = (payload) => {
     updates.sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0;
   }
 
+  if (payload?.image !== undefined) {
+    updates.image = normalizeImage(payload.image);
+  }
+
+  if (payload?.showOnHome !== undefined) {
+    updates.showOnHome = toBoolean(payload.showOnHome);
+  }
+
   if (payload?.metadata !== undefined) {
     updates.metadata = payload.metadata || {};
   }
@@ -67,15 +112,26 @@ const normalizeUpdatePayload = (payload) => {
 class TaxonomyService {
   async list(Model, filters = {}) {
     const query = buildTaxonomyQuery(Model, filters);
-    return Model.find(query).sort({ sortOrder: 1, name: 1 }).lean();
+    return Model.find(query).sort(LIST_SORT).lean();
+  }
+
+  // Public home: active entries the admin marked to show on the home
+  async listForHome(Model) {
+    return Model.find({ isActive: true, showOnHome: true }).select(HOME_FIELDS).sort(LIST_SORT).lean();
   }
 
   async create(Model, payload) {
     const sanitized = normalizeCreatePayload(payload);
     const item = new Model(sanitized);
-    return item.save();
+    return saveUnique(Model, item);
   }
 
+  /**
+   * Partial update. A rename is checked against the other entries first
+   * (case-insensitive, nothing written on conflict) and then cascades to the
+   * products that reference the old name, matched like the in-use check of
+   * remove(). Resolves to { item, productsUpdated }.
+   */
   async update(Model, id, payload) {
     const updates = normalizeUpdatePayload(payload);
     const item = await Model.findById(id);
@@ -84,13 +140,31 @@ class TaxonomyService {
       throw new AppError('Registro no encontrado', 404, 'TAXONOMY_NOT_FOUND');
     }
 
+    const oldName = item.name;
+    const renaming = updates.name !== undefined && updates.name !== oldName;
+
+    if (renaming) {
+      const taken = await Model.exists({ _id: { $ne: item._id }, name: matchName(updates.name) });
+      if (taken) throw nameTakenError(Model);
+    }
+
     Object.assign(item, updates);
     // .save() (not findByIdAndUpdate) so the pre('validate') slug-sync hook
     // actually runs when name changes - findByIdAndUpdate only runs
     // SchemaType validators, not document middleware.
-    await item.save();
+    await saveUnique(Model, item);
 
-    return item;
+    let productsUpdated = 0;
+    if (renaming) {
+      const field = productFieldFor(Model);
+      const result = await Producto.updateMany(
+        { [field]: matchName(oldName) },
+        { $set: { [field]: item.name } },
+      );
+      productsUpdated = result?.modifiedCount ?? 0;
+    }
+
+    return { item, productsUpdated };
   }
 
   async remove(Model, id) {
@@ -99,10 +173,7 @@ class TaxonomyService {
       throw new AppError('Registro no encontrado', 404, 'TAXONOMY_NOT_FOUND');
     }
 
-    const field = Model.modelName === 'Brand' ? 'brand' : 'category';
-    const inUse = await Producto.countDocuments({
-      [field]: { $regex: `^${escapeRegex(item.name)}$`, $options: 'i' },
-    });
+    const inUse = await Producto.countDocuments({ [productFieldFor(Model)]: matchName(item.name) });
 
     if (inUse > 0) {
       const label = Model.modelName === 'Brand' ? 'la marca' : 'la categoría';

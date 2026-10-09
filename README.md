@@ -34,7 +34,8 @@ src/
 └── server.js            # Entry point
 scripts/
 ├── seed-taxonomy.js     # Carga inicial de marcas y categorías
-└── normalize-names.js   # Normaliza nombres existentes (productos, marcas, categorías)
+├── normalize-names.js   # Normaliza nombres existentes (productos, marcas, categorías)
+└── backfill-home-taxonomy.js # Marca la home y carga las imágenes de categorías (una vez)
 ```
 
 ## Scripts
@@ -46,6 +47,7 @@ pnpm dev                # Iniciar con nodemon (desarrollo)
 pnpm test               # Tests con node --test (no necesitan MongoDB)
 pnpm seed:taxonomy      # Cargar marcas y categorías en la base configurada
 pnpm normalize:names    # Dry-run: muestra los nombres a normalizar y las colisiones; `pnpm normalize:names -- --apply` escribe
+pnpm backfill:home      # Dry-run: marca para la home las marcas/categorías activas y carga las 5 imágenes de categorías vacías; `pnpm backfill:home -- --apply` escribe
 ```
 
 ## Configuración
@@ -171,9 +173,10 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
 | `GET` | `/api/brands`, `/api/categories` | Público | Solo las activas |
+| `GET` | `/api/brands?home=true`, `/api/categories?home=true` | Público | Activas y marcadas para la home (`_id`, `name`, `slug`, `image`), por `sortOrder` y nombre |
 | `GET` | `/api/brands/all`, `/api/categories/all` | Admin | Todas, incluidas las inactivas |
 | `POST` | `/api/brands`, `/api/categories` | Admin | Crear |
-| `PUT` | `/api/brands/:id`, `/api/categories/:id` | Admin | Actualizar (parcial) |
+| `PUT` | `/api/brands/:id`, `/api/categories/:id` | Admin | Actualizar (parcial). Al renombrar, los productos con el nombre anterior pasan al nuevo; 409 si el nombre ya existe |
 | `DELETE` | `/api/brands/:id`, `/api/categories/:id` | Admin | Eliminar (409 si tiene productos asociados) |
 
 ### Carrito
@@ -253,7 +256,9 @@ Body para crear un pedido (el dueño sale del token; nombre y precio salen de la
   "slug": "string (único, derivado del nombre)",
   "isActive": "boolean",
   "sortOrder": "number",
-  "description": "string"
+  "description": "string",
+  "image": "string (vacío o URL http(s), máx. 2048)",
+  "showOnHome": "boolean (default false)"
 }
 ```
 
@@ -298,3 +303,5 @@ docker run -p 5000:5000 --env-file .env visual-detail-backend
 # Variables necesarias
 # NODE_ENV=production, MONGODB_URI, JWT_SECRET, FRONTEND_URL
 ```
+
+**Home desde la base (marcas/categorías con `image` y `showOnHome`)**: desplegar primero el backend, después correr `pnpm backfill:home -- --apply` contra producción (conviene revisar antes el dry-run) y recién entonces desplegar el front, que lee `?home=true`.

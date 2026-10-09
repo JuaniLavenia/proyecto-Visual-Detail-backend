@@ -1,5 +1,6 @@
 const { Schema, model } = require('mongoose');
 const { slugify } = require('../utils/slugify');
+const { isHttpUrlOrEmpty, IMAGE_URL_MAX_LENGTH } = require('../utils/image-url');
 
 const categorySchema = new Schema(
   {
@@ -32,6 +33,21 @@ const categorySchema = new Schema(
     description: {
       type: String,
       default: '',
+    },
+    // Home card image: empty or an absolute http(s) URL
+    image: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: IMAGE_URL_MAX_LENGTH,
+      validate: {
+        validator: isHttpUrlOrEmpty,
+        message: 'image debe ser una URL http(s)',
+      },
+    },
+    showOnHome: {
+      type: Boolean,
+      default: false,
     },
     metadata: {
       type: Schema.Types.Mixed,

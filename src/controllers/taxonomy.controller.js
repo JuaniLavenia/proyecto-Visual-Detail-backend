@@ -4,15 +4,18 @@ const taxonomyService = require('../services/taxonomy.service');
 const Brand = require('../models/Brand');
 const Category = require('../models/Category');
 
-const getBrands = asyncHandler(async (req, res) => {
-  const items = await taxonomyService.list(Brand, { isActive: true });
-  res.json(success(items));
-});
+// `?home=true` narrows the public list to what the admin marked for the home
+const listPublic = (Model) =>
+  asyncHandler(async (req, res) => {
+    const items =
+      req.query.home === 'true'
+        ? await taxonomyService.listForHome(Model)
+        : await taxonomyService.list(Model, { isActive: true });
+    res.json(success(items));
+  });
 
-const getCategories = asyncHandler(async (req, res) => {
-  const items = await taxonomyService.list(Category, { isActive: true });
-  res.json(success(items));
-});
+const getBrands = listPublic(Brand);
+const getCategories = listPublic(Category);
 
 // Listados administrativos: incluyen entradas inactivas (p. ej. las que crea
 // bulkUpsert automaticamente para valores de Excel que no existian) para que
@@ -37,14 +40,18 @@ const createCategory = asyncHandler(async (req, res) => {
   res.status(201).json(success(item, 'Categoría creada'));
 });
 
+// data stays the updated entry; a rename that moved products says how many
+const updatedMessage = (label, productsUpdated) =>
+  productsUpdated > 0 ? `${label}. Productos actualizados: ${productsUpdated}` : label;
+
 const updateBrand = asyncHandler(async (req, res) => {
-  const item = await taxonomyService.update(Brand, req.params.id, req.body);
-  res.json(success(item, 'Marca actualizada'));
+  const { item, productsUpdated } = await taxonomyService.update(Brand, req.params.id, req.body);
+  res.json(success(item, updatedMessage('Marca actualizada', productsUpdated)));
 });
 
 const updateCategory = asyncHandler(async (req, res) => {
-  const item = await taxonomyService.update(Category, req.params.id, req.body);
-  res.json(success(item, 'Categoría actualizada'));
+  const { item, productsUpdated } = await taxonomyService.update(Category, req.params.id, req.body);
+  res.json(success(item, updatedMessage('Categoría actualizada', productsUpdated)));
 });
 
 const deleteBrand = asyncHandler(async (req, res) => {
