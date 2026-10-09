@@ -133,7 +133,8 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
   }
 
   const resultado = await productService.bulkUpsert(validData);
-  const exitosos = resultado.upserted + resultado.modified + resultado.matched;
+  // matchedCount already includes modifiedCount: adding both double-counts updates
+  const exitosos = resultado.upserted + resultado.matched;
 
   res.json(
     success({
