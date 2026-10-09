@@ -13,6 +13,8 @@ const INTERNATIONAL_PHONE = new RegExp(`^\\+\\d{${PHONE_MIN_DIGITS},${PHONE_MAX_
 const DIGITS_ONLY = /^\d+$/;
 // Area codes in Argentina have 2 to 4 digits; the mobile "15" follows them
 const AREA_CODE_LENGTHS = [2, 3, 4];
+const PHONE_INVALID_MESSAGE =
+  'Teléfono inválido: ingresá tu celular con código de área (ej: 381 4159688) o en formato internacional con +';
 
 /**
  * Normalize a national Argentine number (digits only, no "+") to the
@@ -66,9 +68,7 @@ const createPedidoValidation = [
   body('telefono')
     .optional({ values: 'falsy' })
     .custom((value) => normalizePhone(value) !== null)
-    .withMessage(
-      'Teléfono inválido: ingresá tu celular con código de área (ej: 381 4159688) o en formato internacional con +'
-    )
+    .withMessage(PHONE_INVALID_MESSAGE)
     .bail()
     .customSanitizer(normalizePhone),
 ];
@@ -99,6 +99,7 @@ module.exports = {
   MAX_ORDER_LINES,
   MAX_PRODUCT_QUANTITY,
   ESTADO_VALUES,
+  PHONE_INVALID_MESSAGE,
   normalizePhone,
   createPedidoValidation,
   listAdminPedidosQueryValidation,

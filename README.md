@@ -147,7 +147,7 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
 | `GET` | `/api/user/:id` | Auth | Perfil propio (un admin puede ver cualquiera) |
-| `PUT` | `/api/user/:id` | Auth | Actualizar el perfil propio |
+| `PUT` | `/api/user/:id` | Auth | Editar `name` y `phone` del perfil propio (`phone: ""` lo borra). El email solo lo cambia un admin (`PATCH /api/users/:id`) |
 | `GET` | `/api/users` | Admin | Listado paginado con búsqueda, filtros (`role`, `status`), orden y KPIs |
 | `POST` | `/api/users` | Admin | Crear/invitar un usuario (envía mail) |
 | `PATCH` | `/api/users/:id` | Admin | Editar `name`, `email`, `role` o `isActive` |
