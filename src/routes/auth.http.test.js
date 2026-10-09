@@ -88,6 +88,21 @@ test('after logout the old refresh token can no longer be refreshed', async () =
   assert.equal(res.body.error.code, 'INVALID_TOKEN');
 });
 
+// ---------- validation errors ----------
+
+test('a rejected login answers the VALIDATION_ERROR contract without echoing the password', async () => {
+  const res = await request(app)
+    .post('/api/login')
+    .send({ email: 'not-an-email', password: 'my-secret-pass' });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+  assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+  assert.equal(res.body.error.message, 'El correo es incorrecto');
+  assert.deepEqual(res.body.error.details, [{ field: 'email', message: 'El correo es incorrecto' }]);
+  assert.ok(!res.text.includes('my-secret-pass'));
+});
+
 // ---------- rate limiters ----------
 
 const AUTH_ROUTES = [
