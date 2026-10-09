@@ -1,8 +1,10 @@
 const { query, body, param } = require('express-validator');
+const { normalizePhone, PHONE_INVALID_MESSAGE } = require('./pedido.validators');
 
 const MAX_SEARCH_LENGTH = 100;
 const MAX_NAME_LENGTH = 80;
 const ADMIN_EDITABLE_FIELDS = ['name', 'email', 'role', 'isActive'];
+const PROFILE_EDITABLE_FIELDS = ['name', 'phone'];
 const ROLE_VALUES = ['minorista', 'mayorista', 'admin'];
 const STATUS_VALUES = ['active', 'inactive'];
 const SORT_VALUES = ['newest', 'email'];
@@ -93,6 +95,61 @@ const updateUserValidation = [
     .withMessage('isActive debe ser true o false'),
 ];
 
+// PUT /user/:id - self-service profile (also usable by admins on any user).
+// The email is admin-only (PATCH /users/:id): changing it here would let a
+// stolen session take over the account through the password reset.
+const MIN_PROFILE_NAME_LENGTH = 2;
+const PROFILE_NAME_MESSAGE = `El nombre debe tener entre ${MIN_PROFILE_NAME_LENGTH} y ${MAX_NAME_LENGTH} caracteres`;
+const EMAIL_ADMIN_ONLY_MESSAGE = 'El email solo lo puede cambiar un administrador';
+
+// Any other body field is reported under its own name and nothing is written
+const rejectNonEditableProfileFields = async (req, res, next) => {
+  const payload = req.body;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return next();
+
+  const extra = Object.keys(payload).filter(
+    (key) => key !== 'email' && !PROFILE_EDITABLE_FIELDS.includes(key)
+  );
+  try {
+    await Promise.all(
+      extra.map((key) =>
+        body(key)
+          .custom(() => false)
+          .withMessage(`El campo ${key} no se puede modificar`)
+          .run(req)
+      )
+    );
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const updateProfileValidation = [
+  ...userIdParamValidation,
+  body('email').not().exists().withMessage(EMAIL_ADMIN_ONLY_MESSAGE),
+  rejectNonEditableProfileFields,
+  body('name')
+    .optional()
+    .isString()
+    .withMessage(PROFILE_NAME_MESSAGE)
+    .bail()
+    .trim()
+    .isLength({ min: MIN_PROFILE_NAME_LENGTH, max: MAX_NAME_LENGTH })
+    .withMessage(PROFILE_NAME_MESSAGE),
+  // Empty string clears the phone (stored as null, like a user who never gave one)
+  body('phone')
+    .optional()
+    .isString()
+    .withMessage(PHONE_INVALID_MESSAGE)
+    .bail()
+    .trim()
+    .custom((value) => value === '' || normalizePhone(value) !== null)
+    .withMessage(PHONE_INVALID_MESSAGE)
+    .bail()
+    .customSanitizer((value) => (value === '' ? null : normalizePhone(value))),
+];
+
 module.exports = {
   MAX_SEARCH_LENGTH,
   MAX_NAME_LENGTH,
@@ -104,4 +161,6 @@ module.exports = {
   userIdParamValidation,
   createUserValidation,
   updateUserValidation,
+  PROFILE_EDITABLE_FIELDS,
+  updateProfileValidation,
 };

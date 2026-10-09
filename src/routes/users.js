@@ -20,6 +20,7 @@ const {
   createUserValidation,
   updateUserValidation,
   userIdParamValidation,
+  updateProfileValidation,
 } = require("../validators/user.validators");
 
 // ========== RUTAS AUTENTICADAS ==========
@@ -106,15 +107,13 @@ router.get(
   getUserInfo
 );
 
-// PUT /user/:id - actualizar perfil de usuario
-// El usuario solo puede modificar su propio perfil
+// PUT /user/:id - actualizar nombre y teléfono del perfil
+// El usuario solo puede modificar su propio perfil (un admin, cualquiera).
+// El email solo lo cambia un admin desde PATCH /users/:id.
 router.put(
   "/user/:id",
   authenticate,
-  [
-    param("id").isMongoId().withMessage("ID de usuario inválido"),
-    body("email").optional().isEmail().withMessage("Email inválido"),
-  ],
+  updateProfileValidation,
   requestValidation,
   updateUser
 );

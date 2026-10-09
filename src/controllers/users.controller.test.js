@@ -72,10 +72,18 @@ const selfRequest = (body) => ({
   body,
 });
 
-test('updateUser ignores role and password sent by the user', async () => {
-  await run(selfRequest({ email: 'new@mail.com', role: 'admin', password: 'plain', refreshToken: 'x' }));
+test('updateUser forwards only name and phone, never email, role or secrets', async () => {
+  await run(
+    selfRequest({ name: 'Ana', phone: '+5493814159688', email: 'new@mail.com', role: 'admin', password: 'plain', refreshToken: 'x' })
+  );
 
-  assert.deepEqual(receivedUpdates, { email: 'new@mail.com' });
+  assert.deepEqual(receivedUpdates, { name: 'Ana', phone: '+5493814159688' });
+});
+
+test('updateUser forwards a cleared phone (null)', async () => {
+  await run(selfRequest({ phone: null }));
+
+  assert.deepEqual(receivedUpdates, { phone: null });
 });
 
 test('sendPasswordResetLink sends the reset link for the requested user', async () => {
@@ -109,7 +117,7 @@ test('sendPasswordResetLink forwards service errors', async () => {
 });
 
 test('updateUser rejects a request with no editable fields', async () => {
-  const { err } = await run(selfRequest({ role: 'admin' }));
+  const { err } = await run(selfRequest({ email: 'new@mail.com', role: 'admin' }));
 
   assert.equal(err?.statusCode ?? err?.status, 400);
   assert.equal(receivedUpdates, undefined);

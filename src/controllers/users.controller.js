@@ -8,9 +8,10 @@ const userService = require('../services/user.service');
 const passwordResetService = require('../services/password-reset.service');
 const { asyncHandler, AppError } = require('../middleware/error.middleware');
 const { success, paginated } = require('../utils/response-formatter');
-const { ADMIN_EDITABLE_FIELDS } = require('../validators/user.validators');
+const { ADMIN_EDITABLE_FIELDS, PROFILE_EDITABLE_FIELDS } = require('../validators/user.validators');
 
-const PROFILE_EDITABLE_FIELDS = ['email'];
+// Profile payload: name and phone are always present (null when unset)
+const toProfile = (user) => ({ ...user, name: user.name ?? null, phone: user.phone ?? null });
 
 const getUserInfo = asyncHandler(async (req, res, next) => {
   const requestedId = req.params.id;
@@ -23,7 +24,7 @@ const getUserInfo = asyncHandler(async (req, res, next) => {
   }
 
   const user = await userService.findById(requestedId);
-  res.json(success({ usuario: user }));
+  res.json(success({ usuario: toProfile(user) }));
 });
 
 // Admin only (route guarded by isAdmin). Query params already validated.
@@ -64,8 +65,9 @@ const updateUser = asyncHandler(async (req, res, next) => {
     throw new AppError('Solo podés modificar tu propio perfil', 403, 'FORBIDDEN');
   }
 
-  // Whitelist: role/password/refreshToken have dedicated flows and must never
-  // be writable through the profile endpoint
+  // Whitelist (the route already rejects anything else): email, role,
+  // password and refreshToken have dedicated flows and must never be
+  // writable through the profile endpoint
   const updates = {};
   for (const field of PROFILE_EDITABLE_FIELDS) {
     if (req.body?.[field] !== undefined) {
@@ -78,7 +80,7 @@ const updateUser = asyncHandler(async (req, res, next) => {
   }
 
   const user = await userService.update(requestedId, updates);
-  res.json(success({ usuario: user }, 'Usuario modificado'));
+  res.json(success({ usuario: toProfile(user) }, 'Usuario modificado'));
 });
 
 // Admin only. Body already validated and normalized.

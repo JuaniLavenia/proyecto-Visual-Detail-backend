@@ -137,7 +137,7 @@ test("an admin can read any user's profile", async () => {
 test("a user cannot update another user's profile", async () => {
   const res = await send('put', `/api/user/${OTHER_USER_ID}`, {
     token: accessTokenFor(USER_ID),
-    body: { email: 'taken@mail.com' },
+    body: { name: 'Ana' },
   });
 
   assert.equal(res.status, 403);
