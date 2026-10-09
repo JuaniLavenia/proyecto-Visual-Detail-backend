@@ -247,14 +247,12 @@ class PedidoService {
     const completados = await Pedido.countDocuments({ estado: 'Completado' });
     const cancelados = await Pedido.countDocuments({ estado: 'Cancelado' });
 
-    // Calculate revenue from completed orders
-    const completedOrders = await Pedido.find({ estado: 'Completado' });
-    const revenue = completedOrders.reduce((sum, pedido) => {
-      const pedidoTotal = pedido.productos?.reduce((acc, prod) => {
-        return acc + (prod.precio || 0) * (prod.cantidad || 0);
-      }, 0);
-      return sum + pedidoTotal;
-    }, 0);
+    // Revenue of completed orders; legacy orders without total count as 0
+    const [revenueRow] = await Pedido.aggregate([
+      { $match: { estado: 'Completado' } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$total', 0] } } } },
+    ]);
+    const revenue = roundMoney(revenueRow?.total ?? 0);
 
     return {
       total,

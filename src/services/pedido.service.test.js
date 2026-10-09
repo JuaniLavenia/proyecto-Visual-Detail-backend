@@ -285,6 +285,94 @@ test('createForUser keeps ObjectId product references castable', async () => {
   }
 });
 
+// ========== Dashboard revenue ==========
+
+const REVENUE_PIPELINE = [
+  { $match: { estado: 'Completado' } },
+  { $group: { _id: null, total: { $sum: { $ifNull: ['$total', 0] } } } },
+];
+
+const stubStats = ({ revenueResult, counts = {} }) => {
+  const Product = require('../models/Product');
+  const originals = {
+    count: Pedido.countDocuments,
+    aggregate: Pedido.aggregate,
+    find: Pedido.find,
+    productCount: Product.countDocuments,
+    userCount: User.countDocuments,
+  };
+  const pipelines = [];
+  Pedido.countDocuments = async (filter = {}) => counts[filter.estado ?? 'all'] ?? 0;
+  Pedido.aggregate = async (pipeline) => {
+    pipelines.push(pipeline);
+    return revenueResult;
+  };
+  Pedido.find = () => {
+    throw new Error('revenue must not load whole orders');
+  };
+  Product.countDocuments = async () => 4;
+  User.countDocuments = async () => 9;
+  const restore = () => {
+    Pedido.countDocuments = originals.count;
+    Pedido.aggregate = originals.aggregate;
+    Pedido.find = originals.find;
+    Product.countDocuments = originals.productCount;
+    User.countDocuments = originals.userCount;
+  };
+  return { pipelines, restore };
+};
+
+test('getStats sums the total of completed orders with an aggregate', async () => {
+  const { pipelines, restore } = stubStats({
+    revenueResult: [{ _id: null, total: 12500.5 }],
+    counts: { all: 6, Pendiente: 2, Completado: 3, Cancelado: 1 },
+  });
+  try {
+    const stats = await pedidoService.getStats();
+    assert.deepEqual(stats, { total: 6, pendientes: 2, completados: 3, cancelados: 1, revenue: 12500.5 });
+    assert.deepEqual(pipelines, [REVENUE_PIPELINE]);
+  } finally {
+    restore();
+  }
+});
+
+test('getStats reports 0 revenue without completed orders', async () => {
+  const { restore } = stubStats({ revenueResult: [] });
+  try {
+    const stats = await pedidoService.getStats();
+    assert.equal(stats.revenue, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('getFullStats exposes the aggregated revenue as ventas.total', async () => {
+  const { pipelines, restore } = stubStats({
+    revenueResult: [{ _id: null, total: 300 }],
+    counts: { all: 1, Completado: 1 },
+  });
+  try {
+    const stats = await pedidoService.getFullStats();
+    assert.deepEqual(stats.ventas, { total: 300 });
+    assert.deepEqual(stats.pedidos, { total: 1, pendientes: 0, completados: 1, cancelados: 0 });
+    assert.deepEqual(stats.usuarios, { total: 9 });
+    assert.equal(stats.stock.total, 4);
+    assert.deepEqual(pipelines, [REVENUE_PIPELINE]);
+  } finally {
+    restore();
+  }
+});
+
+test('getFullStats reports 0 sales without completed orders', async () => {
+  const { restore } = stubStats({ revenueResult: [] });
+  try {
+    const stats = await pedidoService.getFullStats();
+    assert.deepEqual(stats.ventas, { total: 0 });
+  } finally {
+    restore();
+  }
+});
+
 // ========== Order model ==========
 
 test('Pedido stores the product reference, unit price and order total', () => {
