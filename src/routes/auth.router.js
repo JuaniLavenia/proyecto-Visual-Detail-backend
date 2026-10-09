@@ -16,6 +16,8 @@ const {
   passwordWithConfirmationRule,
 } = require("../validators/auth.validators");
 const {
+  loginLimiter,
+  sessionLimiter,
   authLimiter,
   passwordResetLimiter,
 } = require("../middleware/rate-limiter");
@@ -26,7 +28,7 @@ const router = express.Router();
 // may have shorter passwords)
 router.post(
   "/login",
-  authLimiter,
+  loginLimiter,
   [authEmailRule(), loginPasswordRule()],
   requestValidation,
   login
@@ -44,7 +46,7 @@ router.post(
 // Refresh token - NO validacion tradicional, pero requiere body
 router.post(
   "/refresh",
-  authLimiter,
+  sessionLimiter,
   [
     body("refreshToken")
       .notEmpty()
@@ -57,7 +59,7 @@ router.post(
 // Logout
 router.post(
   "/logout",
-  authLimiter,
+  sessionLimiter,
   [
     body("refreshToken")
       .notEmpty()

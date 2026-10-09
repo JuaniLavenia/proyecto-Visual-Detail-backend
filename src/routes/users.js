@@ -14,6 +14,7 @@ const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 const { authenticate } = require("../middleware/auth.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
+const { adminMailLimiter } = require("../middleware/rate-limiter");
 const {
   listUsersQueryValidation,
   createUserValidation,
@@ -38,6 +39,7 @@ router.post(
   "/users",
   authenticate,
   isAdmin,
+  adminMailLimiter,
   createUserValidation,
   requestValidation,
   createUser
@@ -83,6 +85,7 @@ router.post(
   "/users/:id/password-reset",
   authenticate,
   isAdmin,
+  adminMailLimiter,
   [
     param("id").isMongoId().withMessage("ID de usuario inválido"),
   ],

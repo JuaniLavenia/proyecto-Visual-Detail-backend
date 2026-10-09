@@ -21,7 +21,13 @@ const crypto = require('crypto');
 const userService = require('../services/user.service');
 const authService = require('../services/auth.service');
 const passwordResetService = require('../services/password-reset.service');
-const { authLimiter, passwordResetLimiter } = require('../middleware/rate-limiter');
+const {
+  loginLimiter,
+  sessionLimiter,
+  authLimiter,
+  passwordResetLimiter,
+  adminMailLimiter,
+} = require('../middleware/rate-limiter');
 
 afterEach(restoreStubs);
 
@@ -238,13 +244,17 @@ for (const [field, payload] of [
 
 // ---------- rate limiters ----------
 
-const AUTH_ROUTES = [
-  ['post', '/login'],
-  ['post', '/register'],
-  ['post', '/refresh'],
-  ['post', '/logout'],
-  ['post', '/forgot'],
-  ['post', '/reset/:id/:token'],
+// [method, path, limiter, name, position in the route stack]
+// Admin routes count only requests that passed authenticate + isAdmin
+const LIMITED_ROUTES = [
+  ['post', '/login', loginLimiter, 'loginLimiter', 0],
+  ['post', '/register', authLimiter, 'authLimiter', 0],
+  ['post', '/refresh', sessionLimiter, 'sessionLimiter', 0],
+  ['post', '/logout', sessionLimiter, 'sessionLimiter', 0],
+  ['post', '/forgot', authLimiter, 'authLimiter', 0],
+  ['post', '/reset/:id/:token', authLimiter, 'authLimiter', 0],
+  ['post', '/users', adminMailLimiter, 'adminMailLimiter', 2],
+  ['post', '/users/:id/password-reset', adminMailLimiter, 'adminMailLimiter', 2],
 ];
 
 const handlersOf = (method, path) => {
@@ -253,13 +263,19 @@ const handlersOf = (method, path) => {
   return route.stack.map((layer) => layer.handle);
 };
 
-for (const [method, path] of AUTH_ROUTES) {
-  test(`${method.toUpperCase()} ${path} runs authLimiter before its handler`, () => {
+for (const [method, path, limiter, name, position] of LIMITED_ROUTES) {
+  test(`${method.toUpperCase()} ${path} runs ${name} before validation`, () => {
     const handlers = handlersOf(method, path);
 
-    assert.equal(handlers[0], authLimiter);
+    assert.equal(handlers[position], limiter);
   });
 }
+
+test('token rotation and login use separate limiters', () => {
+  assert.notEqual(loginLimiter, sessionLimiter);
+  assert.ok(!handlersOf('post', '/refresh').includes(loginLimiter));
+  assert.ok(!handlersOf('post', '/logout').includes(loginLimiter));
+});
 
 for (const path of ['/forgot', '/reset/:id/:token']) {
   test(`POST ${path} also runs the stricter passwordResetLimiter`, () => {
@@ -272,6 +288,25 @@ for (const path of ['/forgot', '/reset/:id/:token']) {
 // Supertest connects over loopback: clear every key that address can map to
 const LOOPBACK_KEYS = ['::/56', '127.0.0.1', '::ffff:127.0.0.1'];
 const resetLimiter = (limiter) => Promise.all(LOOPBACK_KEYS.map((key) => limiter.resetKey(key)));
+
+test('POST /login answers 429 after 10 failed attempts, ignoring successful logins', async () => {
+  await resetLimiter(loginLimiter);
+  const user = { _id: USER_ID, role: 'minorista' };
+  stub(authService, 'login', spy({ user, accessToken: 'a', refreshToken: 'r' }));
+  const succeed = () => request(app).post('/api/login').send({ email: 'a@mail.com', password: 'whatever' });
+  const fail = () => request(app).post('/api/login').send({ email: 'not-an-email', password: 'x' });
+
+  for (let i = 0; i < 12; i++) {
+    assert.equal((await succeed()).status, 200);
+  }
+  for (let i = 0; i < 10; i++) {
+    assert.equal((await fail()).status, 400);
+  }
+
+  const limited = await fail();
+  assert.equal(limited.status, 429);
+  assert.equal(limited.body.error.code, 'RATE_LIMIT_EXCEEDED');
+});
 
 test('POST /forgot answers 429 once the password reset limit is exhausted', async () => {
   // Earlier reset-password tests share this limiter's bucket
