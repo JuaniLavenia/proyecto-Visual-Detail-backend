@@ -174,7 +174,7 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 | `GET` | `/api/brands?home=true`, `/api/categories?home=true` | Público | Activas y marcadas para la home (`_id`, `name`, `slug`, `image`), por `sortOrder` y nombre |
 | `GET` | `/api/brands/all`, `/api/categories/all` | Admin | Todas, incluidas las inactivas |
 | `POST` | `/api/brands`, `/api/categories` | Admin | Crear |
-| `PUT` | `/api/brands/:id`, `/api/categories/:id` | Admin | Actualizar (parcial) |
+| `PUT` | `/api/brands/:id`, `/api/categories/:id` | Admin | Actualizar (parcial). Al renombrar, los productos con el nombre anterior pasan al nuevo; 409 si el nombre ya existe |
 | `DELETE` | `/api/brands/:id`, `/api/categories/:id` | Admin | Eliminar (409 si tiene productos asociados) |
 
 ### Carrito

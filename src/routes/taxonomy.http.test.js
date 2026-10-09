@@ -30,7 +30,7 @@ beforeEach(() => {
     list: stub(taxonomyService, 'list', spy([{ _id: ITEM_ID, name: 'Toxic Shine' }])),
     listForHome: stub(taxonomyService, 'listForHome', spy(HOME_ROWS)),
     create: stub(taxonomyService, 'create', spy((Model, payload) => ({ _id: ITEM_ID, ...payload }))),
-    update: stub(taxonomyService, 'update', spy((Model, id, payload) => ({ _id: id, ...payload }))),
+    update: stub(taxonomyService, 'update', spy((Model, id, payload) => ({ item: { _id: id, ...payload }, productsUpdated: 0 }))),
   };
 });
 
@@ -117,4 +117,14 @@ test('PUT /api/brands/:id returns the updated entry as data', async () => {
   assert.equal(res.body.data._id, ITEM_ID);
   assert.equal(res.body.data.image, IMAGE);
   assert.equal(res.body.message, 'Marca actualizada');
+});
+
+test('PUT /api/categories/:id reports how many products a rename moved', async () => {
+  stub(taxonomyService, 'update', spy((Model, id, payload) => ({ item: { _id: id, ...payload }, productsUpdated: 3 })));
+
+  const res = await request(app).put(`/api/categories/${ITEM_ID}`).set(admin()).send({ name: 'Selladores' });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.name, 'Selladores');
+  assert.equal(res.body.message, 'Categoría actualizada. Productos actualizados: 3');
 });

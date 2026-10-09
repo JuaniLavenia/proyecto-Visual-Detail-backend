@@ -40,14 +40,18 @@ const createCategory = asyncHandler(async (req, res) => {
   res.status(201).json(success(item, 'Categoría creada'));
 });
 
+// data stays the updated entry; a rename that moved products says how many
+const updatedMessage = (label, productsUpdated) =>
+  productsUpdated > 0 ? `${label}. Productos actualizados: ${productsUpdated}` : label;
+
 const updateBrand = asyncHandler(async (req, res) => {
-  const item = await taxonomyService.update(Brand, req.params.id, req.body);
-  res.json(success(item, 'Marca actualizada'));
+  const { item, productsUpdated } = await taxonomyService.update(Brand, req.params.id, req.body);
+  res.json(success(item, updatedMessage('Marca actualizada', productsUpdated)));
 });
 
 const updateCategory = asyncHandler(async (req, res) => {
-  const item = await taxonomyService.update(Category, req.params.id, req.body);
-  res.json(success(item, 'Categoría actualizada'));
+  const { item, productsUpdated } = await taxonomyService.update(Category, req.params.id, req.body);
+  res.json(success(item, updatedMessage('Categoría actualizada', productsUpdated)));
 });
 
 const deleteBrand = asyncHandler(async (req, res) => {
