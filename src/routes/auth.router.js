@@ -10,50 +10,35 @@ const {
 const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
 const {
+  authEmailRule,
+  loginPasswordRule,
+  passwordRule,
+  passwordWithConfirmationRule,
+} = require("../validators/auth.validators");
+const {
+  loginLimiter,
+  sessionLimiter,
   authLimiter,
   passwordResetLimiter,
 } = require("../middleware/rate-limiter");
 
 const router = express.Router();
 
-// Login with rate limiting and validation
+// Login with rate limiting and validation (no length rule: existing users
+// may have shorter passwords)
 router.post(
   "/login",
-  authLimiter,
-  [
-    body("email")
-      .trim()
-      .notEmpty()
-      .withMessage("El correo es requerido")
-      .isEmail()
-      .withMessage("El correo es incorrecto"),
-    body("password")
-      .notEmpty()
-      .withMessage("La contraseña es requerida"),
-  ],
+  loginLimiter,
+  [authEmailRule(), loginPasswordRule()],
   requestValidation,
   login
 );
 
-// Register with validation (existing)
+// Register with validation
 router.post(
   "/register",
   authLimiter,
-  [
-    body("email")
-      .trim()
-      .notEmpty()
-      .withMessage("El correo es requerido")
-      .isEmail()
-      .withMessage("El correo es incorrecto"),
-    body("password")
-      .notEmpty()
-      .withMessage("La contraseña es requerida")
-      .isLength({ min: 6, max: 12 })
-      .withMessage("La contraseña debe tener entre 6 y 12 caracteres")
-      .custom((value, { req }) => value === req.body.password_confirmation)
-      .withMessage("Las contraseñas no coincide"),
-  ],
+  [authEmailRule(), passwordWithConfirmationRule()],
   requestValidation,
   register
 );
@@ -61,7 +46,7 @@ router.post(
 // Refresh token - NO validacion tradicional, pero requiere body
 router.post(
   "/refresh",
-  authLimiter,
+  sessionLimiter,
   [
     body("refreshToken")
       .notEmpty()
@@ -74,7 +59,7 @@ router.post(
 // Logout
 router.post(
   "/logout",
-  authLimiter,
+  sessionLimiter,
   [
     body("refreshToken")
       .notEmpty()
@@ -89,14 +74,7 @@ router.post(
   "/forgot",
   authLimiter,
   passwordResetLimiter,
-  [
-    body("email")
-      .trim()
-      .notEmpty()
-      .withMessage("El correo es requerido")
-      .isEmail()
-      .withMessage("El correo es incorrecto"),
-  ],
+  [authEmailRule()],
   requestValidation,
   forgotPassword
 );
@@ -109,11 +87,7 @@ router.post(
   [
     param("id").isMongoId().withMessage("El link de recuperación es inválido"),
     param("token").notEmpty().withMessage("El link de recuperación es inválido"),
-    body("password")
-      .notEmpty()
-      .withMessage("La contraseña es requerida")
-      .isLength({ min: 6, max: 12 })
-      .withMessage("La contraseña debe tener entre 6 y 12 caracteres"),
+    passwordRule(),
   ],
   requestValidation,
   resetPassword

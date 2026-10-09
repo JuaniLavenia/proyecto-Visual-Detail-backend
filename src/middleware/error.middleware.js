@@ -19,19 +19,18 @@ class AppError extends Error {
 }
 
 const errorMiddleware = (err, req, res, next) => {
-  // Log error in development
-  if (isDevelopment()) {
-    console.error('Error:', err.message);
-    console.error('Stack:', err.stack);
-  }
-
   // Default error
   let statusCode = err.statusCode || err.status || 500;
   let message = err.message || 'Internal server error';
   let code = err.code || 'INTERNAL_ERROR';
 
   // Handle specific error types
-  if (err.name === 'ValidationError') {
+  if (err.type === 'entity.parse.failed') {
+    // Malformed JSON body (body-parser): never echo the raw body
+    statusCode = 400;
+    message = 'JSON inválido';
+    code = 'INVALID_JSON';
+  } else if (err.name === 'ValidationError') {
     statusCode = 400;
     message = 'Validation error';
     code = 'VALIDATION_ERROR';
@@ -62,6 +61,13 @@ const errorMiddleware = (err, req, res, next) => {
     }
   }
 
+  // Unexpected failures are always logged (stack stays server-side outside
+  // development); in development every error is logged
+  if (isDevelopment() || statusCode >= 500) {
+    console.error('Error:', err.message);
+    console.error('Stack:', err.stack);
+  }
+
   // Response format
   const response = {
     success: false,
@@ -71,8 +77,8 @@ const errorMiddleware = (err, req, res, next) => {
     }
   };
 
-  // Add stack trace in development only
-  if (isDevelopment() && err.stack) {
+  // Add stack trace in development only (a parse error carries no useful one)
+  if (isDevelopment() && err.stack && code !== 'INVALID_JSON') {
     response.error.stack = err.stack;
   }
 

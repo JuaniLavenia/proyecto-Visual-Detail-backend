@@ -181,6 +181,8 @@ class AuthService {
 
   /**
    * Logout user
+   * Only the current refresh token ends the session: an access token or an
+   * already-rotated refresh token is a no-op (logout stays idempotent).
    */
   async logout(refreshToken) {
     if (!refreshToken) {
@@ -189,9 +191,11 @@ class AuthService {
 
     try {
       const decoded = jwt.verify(refreshToken, config.get('jwt.secret'));
+      if (decoded.type !== 'refresh') return true;
+
       const user = await User.findById(decoded.uid);
-      
-      if (user) {
+
+      if (user && refreshTokenMatches(refreshToken, user.refreshToken)) {
         user.refreshToken = null;
         await user.save();
       }
