@@ -4,7 +4,7 @@ const ESTADO_VALUES = ['Pendiente', 'Completado', 'Cancelado'];
 const MAX_SEARCH_LENGTH = 100;
 const PHONE_MIN_DIGITS = 8;
 const PHONE_MAX_DIGITS = 15;
-const MAX_PRODUCT_NAME_LENGTH = 200;
+const MAX_ORDER_LINES = 50;
 const MAX_PRODUCT_QUANTITY = 10000;
 
 // Digits, spaces, "+", "-" and parentheses are accepted as typed
@@ -51,15 +51,12 @@ const normalizePhone = (value) => {
 // POST /pedidos - the owner comes from the token, never from the body
 const createPedidoValidation = [
   body('productos')
-    .isArray({ min: 1 })
-    .withMessage('Productos debe ser un array no vacío'),
-  body('productos.*.nombre')
-    .isString()
-    .withMessage('Cada producto debe tener un nombre')
-    .bail()
-    .trim()
-    .isLength({ min: 1, max: MAX_PRODUCT_NAME_LENGTH })
-    .withMessage(`El nombre del producto debe tener entre 1 y ${MAX_PRODUCT_NAME_LENGTH} caracteres`),
+    .isArray({ min: 1, max: MAX_ORDER_LINES })
+    .withMessage(`Productos debe ser un array de 1 a ${MAX_ORDER_LINES} elementos`),
+  // Name and price come from the database, never from the client
+  body('productos.*.productId')
+    .isMongoId()
+    .withMessage('Cada producto debe tener un productId válido'),
   body('productos.*.cantidad')
     .isInt({ min: 1, max: MAX_PRODUCT_QUANTITY })
     .withMessage(`La cantidad debe ser un entero entre 1 y ${MAX_PRODUCT_QUANTITY}`)
@@ -99,6 +96,8 @@ module.exports = {
   PHONE_MIN_DIGITS,
   PHONE_MAX_DIGITS,
   MAX_SEARCH_LENGTH,
+  MAX_ORDER_LINES,
+  MAX_PRODUCT_QUANTITY,
   ESTADO_VALUES,
   normalizePhone,
   createPedidoValidation,

@@ -10,12 +10,27 @@ const pedidoSchema = new Schema({
     ref: "User",
     required: true,
   },
+  // producto and precio are missing on legacy orders, so they stay optional
   productos: [
     {
+      producto: {
+        type: Schema.Types.ObjectId,
+        ref: "Producto",
+      },
       nombre: String,
       cantidad: Number,
+      // Unit price snapshot at order time
+      precio: {
+        type: Number,
+        min: 0,
+      },
     },
   ],
+  // Sum of precio * cantidad; missing on legacy orders
+  total: {
+    type: Number,
+    min: 0,
+  },
   estado: {
     type: String,
     enum: ["Pendiente", "Completado", "Cancelado"],

@@ -7,6 +7,7 @@ const {
   createPedidoValidation,
   listAdminPedidosQueryValidation,
   MAX_SEARCH_LENGTH,
+  MAX_ORDER_LINES,
 } = require('./pedido.validators');
 
 const runChains = async (chains, req) => {
@@ -18,7 +19,8 @@ const runChains = async (chains, req) => {
 
 const validateCreate = (body) => runChains(createPedidoValidation, { body });
 
-const PRODUCTOS = [{ nombre: 'Shampoo', cantidad: 2 }];
+const PRODUCT_ID = '64b7f0c2a1b2c3d4e5f60720';
+const PRODUCTOS = [{ productId: PRODUCT_ID, cantidad: 2 }];
 
 test('normalizePhone keeps international numbers typed with + as digits only', () => {
   assert.equal(normalizePhone('+54 9 (11) 2345-6789'), '+5491123456789');
@@ -85,11 +87,44 @@ test('create order rejects an empty or missing productos array', async () => {
   assert.deepEqual(missing.errors.map((e) => e.path), ['productos']);
 });
 
-test('create order rejects products without a name or with a non-positive quantity', async () => {
+test('create order converts cantidad to an integer', async () => {
+  const { req, errors } = await validateCreate({ productos: [{ productId: PRODUCT_ID, cantidad: '3' }] });
+  assert.deepEqual(errors, []);
+  assert.equal(req.body.productos[0].cantidad, 3);
+});
+
+test('create order rejects an invalid productId or an out-of-range quantity', async () => {
   const { errors } = await validateCreate({
-    productos: [{ nombre: '  ', cantidad: 1 }, { nombre: 'Cera', cantidad: 0 }],
+    productos: [
+      { productId: 'not-an-id', cantidad: 1 },
+      { productId: PRODUCT_ID, cantidad: 0 },
+      { cantidad: 1 },
+      { productId: PRODUCT_ID, cantidad: 10001 },
+      { productId: { $ne: null }, cantidad: 1.5 },
+    ],
   });
-  assert.deepEqual(errors.map((e) => e.path).sort(), ['productos[0].nombre', 'productos[1].cantidad']);
+  assert.deepEqual(errors.map((e) => e.path).sort(), [
+    'productos[0].productId',
+    'productos[1].cantidad',
+    'productos[2].productId',
+    'productos[3].cantidad',
+    'productos[4].cantidad',
+    'productos[4].productId',
+  ]);
+});
+
+test('create order no longer requires a product name', async () => {
+  const { errors } = await validateCreate({ productos: [{ productId: PRODUCT_ID, cantidad: 1 }] });
+  assert.deepEqual(errors, []);
+});
+
+test('create order rejects more than the maximum number of lines', async () => {
+  const productos = Array.from({ length: MAX_ORDER_LINES + 1 }, () => ({ productId: PRODUCT_ID, cantidad: 1 }));
+  const { errors } = await validateCreate({ productos });
+  assert.deepEqual(errors.map((e) => e.path), ['productos']);
+
+  const atLimit = await validateCreate({ productos: productos.slice(1) });
+  assert.deepEqual(atLimit.errors, []);
 });
 
 const validateAdminList = (query) => runChains(listAdminPedidosQueryValidation, { query });
