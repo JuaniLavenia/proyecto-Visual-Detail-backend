@@ -14,15 +14,6 @@ const success = (data = null, message = null) => {
   return response;
 };
 
-const error = (message, code = null, statusCode = 500) => {
-  const response = { success: false, error: { message } };
-  if (code !== null) {
-    response.error.code = code;
-  }
-  response.error.statusCode = statusCode;
-  return response;
-};
-
 // `meta` adds extra top-level keys (e.g. KPI counts); it can never
 // override success/data/pagination.
 const paginated = (data, pagination, meta = {}) => {
@@ -36,6 +27,5 @@ const paginated = (data, pagination, meta = {}) => {
 
 module.exports = {
   success,
-  error,
   paginated
 };

@@ -5,15 +5,12 @@
  */
 
 const rateLimit = require('express-rate-limit');
-const config = require('../config');
 
-const createRateLimiter = (options = {}) => {
-  const windowMs = options.windowMs || config.get('rateLimit.windowMs');
-  const max = options.max || config.get('rateLimit.max');
-
+// Every limiter sets its own window and max
+const createRateLimiter = (options) => {
   return rateLimit({
-    windowMs,
-    max,
+    windowMs: options.windowMs,
+    max: options.max,
     message: {
       success: false,
       error: {

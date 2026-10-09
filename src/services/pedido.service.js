@@ -117,15 +117,6 @@ const priceOrderLines = async (productos, role) => {
 
 class PedidoService {
   /**
-   * Get all pedidos with pagination
-   */
-  async findAll(query = {}) {
-    const sanitizedQuery = sanitizeFindQuery(query);
-    const pedidos = await Pedido.find(sanitizedQuery).sort({ _id: -1 });
-    return pedidos;
-  }
-
-  /**
    * Get pedido by ID
    */
   async findById(id) {
@@ -309,25 +300,6 @@ class PedidoService {
       .populate('usuario', 'email role')
       .sort({ _id: -1 })
       .limit(limit);
-  }
-
-  /**
-   * Get orders by status for dashboard
-   */
-  async getOrdersByStatus() {
-    const result = await Pedido.aggregate([
-      {
-        $group: {
-          _id: '$estado',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-    
-    return result.reduce((acc, item) => {
-      acc[item._id] = item.count;
-      return acc;
-    }, {});
   }
 }
 

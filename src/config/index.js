@@ -83,20 +83,6 @@ const config = convict({
       env: 'JWT_REFRESH_EXPIRY'
     }
   },
-  rateLimit: {
-    windowMs: {
-      doc: 'Rate limit window in milliseconds',
-      format: 'int',
-      default: 15 * 60 * 1000, // 15 minutes
-      env: 'RATE_LIMIT_WINDOW_MS'
-    },
-    max: {
-      doc: 'Max requests per window',
-      format: 'int',
-      default: 100,
-      env: 'RATE_LIMIT_MAX'
-    }
-  },
   app: {
     frontendUrl: {
       doc: 'Public frontend base URL (used in e-mail links)',

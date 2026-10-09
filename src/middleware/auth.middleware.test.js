@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 
 const config = require('../config');
 const User = require('../models/User');
-const { authenticate, optionalAuth } = require('./auth.middleware');
+const { authenticate } = require('./auth.middleware');
 
 const USER_ID = '64b7f0c2a1b2c3d4e5f60718';
 
@@ -67,36 +67,6 @@ test('authenticate rejects an inactive user with 403 USER_INACTIVE', async () =>
   assert.equal(req.user, undefined);
 });
 
-// ---------- optionalAuth ----------
-
-const runOptional = (req) =>
-  new Promise((resolve) => {
-    optionalAuth(req, {}, (err) => resolve(err));
-  });
-
-test('optionalAuth attaches an active or legacy user', async () => {
-  const req = requestWithToken();
-
-  const err = await runOptional(req);
-
-  assert.equal(err, undefined);
-  assert.equal(req.user, fakeUser);
-  assert.equal(req.userRole, 'minorista');
-});
-
-test('optionalAuth treats an inactive user as anonymous', async () => {
-  fakeUser.isActive = false;
-  const req = requestWithToken();
-
-  const err = await runOptional(req);
-
-  assert.equal(err, undefined);
-  assert.equal(req.user, undefined);
-  assert.equal(req.userId, undefined);
-  assert.equal(req.userRole, undefined);
-});
-
-
 // ---------- token type ----------
 
 const refreshTokenFor = (userId) =>
@@ -133,14 +103,4 @@ test('authenticate accepts an access token issued by the auth service', async ()
 
   assert.equal(err, undefined);
   assert.equal(req.user, fakeUser);
-});
-
-test('optionalAuth treats a refresh token as anonymous', async () => {
-  const req = requestWithBearer(refreshTokenFor(USER_ID));
-
-  const err = await runOptional(req);
-
-  assert.equal(err, undefined);
-  assert.equal(req.user, undefined);
-  assert.equal(req.userId, undefined);
 });

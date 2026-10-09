@@ -7,10 +7,6 @@ const escapeRegex = (value) => String(value ?? '').replace(REGEX_SPECIAL_CHARS, 
 const buildTaxonomyQuery = (Model, filters = {}) => {
   const query = {};
 
-  if (filters.name) {
-    query.name = { $regex: filters.name, $options: 'i' };
-  }
-
   if (filters.isActive !== undefined) {
     query.isActive = Boolean(filters.isActive);
   }
