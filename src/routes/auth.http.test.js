@@ -210,17 +210,35 @@ test('register accepts passwords of 8 and 72 characters', async () => {
 test('reset rejects a password shorter than 8 characters', async () => {
   const reset = stub(passwordResetService, 'resetPassword', spy(undefined));
 
-  const res = await request(app).post(RESET_PATH).send({ password: 'short' });
+  const res = await request(app).post(RESET_PATH).send({ password: 'short', password_confirmation: 'short' });
 
   assert.equal(res.status, 400);
   assert.deepEqual(fieldMessages(res), [['password', PASSWORD_LENGTH_MESSAGE]]);
   assert.equal(reset.calls.length, 0);
 });
 
-test('reset accepts a valid password', async () => {
+for (const [label, body] of [
+  ['a mismatched confirmation', { password: 'long-enough', password_confirmation: 'other-value' }],
+  ['a missing confirmation', { password: 'long-enough' }],
+]) {
+  test(`reset rejects ${label}`, async () => {
+    const reset = stub(passwordResetService, 'resetPassword', spy(undefined));
+
+    const res = await request(app).post(RESET_PATH).send(body);
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+    assert.deepEqual(fieldMessages(res), [['password', 'Las contraseñas no coinciden']]);
+    assert.equal(reset.calls.length, 0);
+  });
+}
+
+test('reset accepts a valid password with a matching confirmation', async () => {
   const reset = stub(passwordResetService, 'resetPassword', spy(undefined));
 
-  const res = await request(app).post(RESET_PATH).send({ password: 'long-enough' });
+  const res = await request(app)
+    .post(RESET_PATH)
+    .send({ password: 'long-enough', password_confirmation: 'long-enough' });
 
   assert.equal(res.status, 200);
   assert.equal(reset.calls.length, 1);

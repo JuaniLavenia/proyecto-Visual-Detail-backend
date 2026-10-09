@@ -12,7 +12,6 @@ const { requestValidation } = require("../middleware/common.middleware");
 const {
   authEmailRule,
   loginPasswordRule,
-  passwordRule,
   passwordWithConfirmationRule,
 } = require("../validators/auth.validators");
 const {
@@ -87,7 +86,7 @@ router.post(
   [
     param("id").isMongoId().withMessage("El link de recuperación es inválido"),
     param("token").notEmpty().withMessage("El link de recuperación es inválido"),
-    passwordRule(),
+    passwordWithConfirmationRule(),
   ],
   requestValidation,
   resetPassword

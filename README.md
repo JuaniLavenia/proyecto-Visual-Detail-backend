@@ -33,7 +33,8 @@ src/
 ├── app.js               # Configuración de Express
 └── server.js            # Entry point
 scripts/
-└── seed-taxonomy.js     # Carga inicial de marcas y categorías
+├── seed-taxonomy.js     # Carga inicial de marcas y categorías
+└── normalize-names.js   # Normaliza nombres existentes (productos, marcas, categorías)
 ```
 
 ## Scripts
@@ -44,6 +45,7 @@ pnpm watch              # Iniciar con node --watch
 pnpm dev                # Iniciar con nodemon (desarrollo)
 pnpm test               # Tests con node --test (no necesitan MongoDB)
 pnpm seed:taxonomy      # Cargar marcas y categorías en la base configurada
+pnpm normalize:names    # Dry-run: muestra los nombres a normalizar y las colisiones; `pnpm normalize:names -- --apply` escribe
 ```
 
 ## Configuración
