@@ -113,6 +113,14 @@ test('taxonomy update stores the normalized name', async () => {
   stub(Category, 'findById', async () => category);
   stub(Category, 'exists', async () => null);
   stub(Producto, 'updateMany', async () => ({ modifiedCount: 0 }));
+  // A rename runs in a transaction; tests never connect, so fake the session
+  stub(Category, 'startSession', async () => ({
+    startTransaction() {},
+    inTransaction: () => false,
+    async commitTransaction() {},
+    async abortTransaction() {},
+    async endSession() {},
+  }));
 
   await taxonomyService.update(Category, category._id, { name: ' línea   pro ' });
 
