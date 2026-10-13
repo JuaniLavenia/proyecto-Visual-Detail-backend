@@ -2,6 +2,7 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 const pedidoService = require('../services/pedido.service');
+const { AppError } = require('../middleware/error.middleware');
 const { createPedido } = require('./pedidos.controller');
 
 const original = { createForUser: pedidoService.createForUser };
@@ -129,11 +130,41 @@ test('modificarEstadoPedido lets the owner cancel a pending order', async () => 
 test('modificarEstadoPedido refuses an owner cancel of a non-pending order with 400 INVALID_STATE', async () => {
   const updates = stubOrder('Completado');
 
-  const { res } = await invoke(modificarEstadoPedido, statusRequest({ nuevoEstado: 'Cancelado' }));
+  const { res, err } = await invoke(modificarEstadoPedido, statusRequest({ nuevoEstado: 'Cancelado' }));
 
-  assert.equal(res.statusCode, 400);
-  assert.equal(res.body.error.code, 'INVALID_STATE');
+  assert.ok(err instanceof AppError);
+  assert.equal(err.statusCode, 400);
+  assert.equal(err.code, 'INVALID_STATE');
+  assert.equal(err.message, 'No se puede cancelar un pedido que no está pendiente');
+  assert.equal(res.body, null);
   assert.deepEqual(updates, []);
+});
+
+// ---------- cancelPedido ----------
+
+const { cancelPedido } = require('./pedidos.controller');
+
+test('cancelPedido refuses a non-pending order with 400 INVALID_STATE', async () => {
+  const updates = stubOrder('Completado');
+
+  const { res, err } = await invoke(cancelPedido, statusRequest({}));
+
+  assert.ok(err instanceof AppError);
+  assert.equal(err.statusCode, 400);
+  assert.equal(err.code, 'INVALID_STATE');
+  assert.equal(err.message, 'No se puede cancelar un pedido que no está pendiente');
+  assert.equal(res.body, null);
+  assert.deepEqual(updates, []);
+});
+
+test('cancelPedido cancels a pending order of its owner', async () => {
+  const updates = stubOrder('Pendiente');
+
+  const { res, err } = await invoke(cancelPedido, statusRequest({}));
+
+  assert.equal(err, undefined);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(updates, [{ id: ORDER_ID, data: { estado: 'Cancelado' } }]);
 });
 
 test('modificarEstadoPedido forbids a user who does not own the order', async () => {
