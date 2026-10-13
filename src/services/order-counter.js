@@ -47,4 +47,4 @@ const nextOrderNumber = async () => {
   return seeded.seq;
 };
 
-module.exports = { ORDER_COUNTER_ID, ensureOrderCounter, nextOrderNumber };
+module.exports = { ORDER_COUNTER_ID, highestOrderNumber, ensureOrderCounter, nextOrderNumber };
