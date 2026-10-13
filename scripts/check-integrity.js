@@ -55,7 +55,13 @@ const printDuplicates = (plan) => {
 };
 
 const main = async () => {
-  await mongoose.connect(config.get('mongo.uri'), config.get('mongo.options'));
+  // Models are compiled at require time; without these flags Mongoose would create
+  // collections and build every schema index on connect, even in dry-run.
+  await mongoose.connect(config.get('mongo.uri'), {
+    ...config.get('mongo.options'),
+    autoIndex: false,
+    autoCreate: false,
+  });
   console.log(`Conectado a MongoDB (${apply ? 'APPLY' : 'dry-run'})`);
 
   const [cartDuplicates, favoriteDuplicates, orderNumberDuplicates, highest, counter] = await Promise.all([
