@@ -1,6 +1,13 @@
 const CartItem = require("../models/Cart");
 const { AppError } = require("../middleware/error.middleware");
 const { asyncHandler } = require("../middleware/error.middleware");
+const { success } = require("../utils/response-formatter");
+const { loadUserProducts } = require("../utils/user-product-list");
+
+const sendCart = async (res, userId, message) => {
+  const products = await loadUserProducts(CartItem, userId);
+  res.status(200).json(success({ products }, message));
+};
 
 const getUserCart = asyncHandler(async (req, res, next) => {
   const requestedUserId = req.params.userId;
@@ -11,8 +18,7 @@ const getUserCart = asyncHandler(async (req, res, next) => {
     throw new AppError('Solo podés ver tu propio carrito', 403, 'FORBIDDEN');
   }
 
-  const cartItems = await CartItem.findOne({ userId: requestedUserId }).populate("products.product");
-  res.status(200).json({ message: "Carrito", data: cartItems });
+  await sendCart(res, requestedUserId, "Carrito");
 });
 
 const addToCart = asyncHandler(async (req, res, next) => {
@@ -49,7 +55,7 @@ const addToCart = asyncHandler(async (req, res, next) => {
     await newCartItem.save();
   }
 
-  res.status(200).json({ message: "Producto agregado al carrito" });
+  await sendCart(res, userId, "Producto agregado al carrito");
 });
 
 const removeFromCart = asyncHandler(async (req, res, next) => {
@@ -70,7 +76,7 @@ const removeFromCart = asyncHandler(async (req, res, next) => {
     await existingCartItem.save();
   }
 
-  res.status(200).json({ message: "Producto eliminado del carrito" });
+  await sendCart(res, urlUserId, "Producto eliminado del carrito");
 });
 
 module.exports = {
