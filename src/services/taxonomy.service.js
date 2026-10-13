@@ -21,12 +21,35 @@ const nameTakenError = (Model) =>
 const isDuplicateKeyError = (err) => err?.code === 11000;
 
 // Safety net for races and slug collisions: the unique indexes win
-const saveUnique = async (Model, item) => {
+const saveUnique = async (Model, item, options) => {
   try {
-    return await item.save();
+    return await item.save(options);
   } catch (err) {
     if (isDuplicateKeyError(err)) throw nameTakenError(Model);
     throw err;
+  }
+};
+
+/**
+ * Runs `work(session)` in a transaction: commits when it resolves, aborts and
+ * rethrows when it fails. No automatic retry: a retried save() of an
+ * already-saved document would send nothing. Requires a replica set (Atlas),
+ * like withLastAdminGuard in user.service.
+ */
+const withTransaction = async (Model, work) => {
+  const session = await Model.startSession();
+  try {
+    session.startTransaction();
+    const result = await work(session);
+    await session.commitTransaction();
+    return result;
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction().catch(() => {});
+    }
+    throw err;
+  } finally {
+    await session.endSession();
   }
 };
 
@@ -152,17 +175,23 @@ class TaxonomyService {
     // .save() (not findByIdAndUpdate) so the pre('validate') slug-sync hook
     // actually runs when name changes - findByIdAndUpdate only runs
     // SchemaType validators, not document middleware.
-    await saveUnique(Model, item);
+    if (!renaming) {
+      await saveUnique(Model, item);
+      return { item, productsUpdated: 0 };
+    }
 
-    let productsUpdated = 0;
-    if (renaming) {
+    // The entry and its products change together: if moving the products
+    // fails, the entry keeps its old name
+    const productsUpdated = await withTransaction(Model, async (session) => {
+      await saveUnique(Model, item, { session });
       const field = productFieldFor(Model);
       const result = await Producto.updateMany(
         { [field]: matchName(oldName) },
         { $set: { [field]: item.name } },
+        { session },
       );
-      productsUpdated = result?.modifiedCount ?? 0;
-    }
+      return result?.modifiedCount ?? 0;
+    });
 
     return { item, productsUpdated };
   }

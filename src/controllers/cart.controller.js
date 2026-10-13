@@ -2,7 +2,7 @@ const CartItem = require("../models/Cart");
 const { AppError } = require("../middleware/error.middleware");
 const { asyncHandler } = require("../middleware/error.middleware");
 const { success } = require("../utils/response-formatter");
-const { loadUserProducts } = require("../utils/user-product-list");
+const { loadUserProducts, createListIfMissing } = require("../utils/user-product-list");
 
 const sendCart = async (res, userId, message) => {
   const products = await loadUserProducts(CartItem, userId);
@@ -28,32 +28,40 @@ const addToCart = asyncHandler(async (req, res, next) => {
   // Siempre usar el usuario autenticado
   const userId = currentUserId;
 
-  const existingCartItem = await CartItem.findOne({ userId });
+  let existingCartItem = await CartItem.findOne({ userId });
 
-  if (existingCartItem) {
-    const existingProduct = existingCartItem.products.find(
-      (p) => p.product.toString() === productId
-    );
-
-    if (existingProduct) {
-      if (quantity !== undefined && quantity !== existingProduct.quantity) {
-        existingProduct.quantity = quantity;
-      }
-    } else {
-      existingCartItem.products.push({
-        product: productId,
-        quantity: quantity || 1,
-      });
-    }
-
-    await existingCartItem.save();
-  } else {
-    const newCartItem = new CartItem({
-      userId,
-      products: [{ product: productId, quantity: quantity || 1 }],
+  if (!existingCartItem) {
+    const created = await createListIfMissing(CartItem, userId, {
+      product: productId,
+      quantity: quantity || 1,
     });
-    await newCartItem.save();
+    if (created) {
+      await sendCart(res, userId, "Producto agregado al carrito");
+      return;
+    }
+    // A concurrent first add created the cart: update it instead
+    existingCartItem = await CartItem.findOne({ userId });
+    if (!existingCartItem) {
+      throw new AppError('No se pudo actualizar el carrito, intentá de nuevo', 409, 'CONCURRENT_UPDATE');
+    }
   }
+
+  const existingProduct = existingCartItem.products.find(
+    (p) => p.product.toString() === productId
+  );
+
+  if (existingProduct) {
+    if (quantity !== undefined && quantity !== existingProduct.quantity) {
+      existingProduct.quantity = quantity;
+    }
+  } else {
+    existingCartItem.products.push({
+      product: productId,
+      quantity: quantity || 1,
+    });
+  }
+
+  await existingCartItem.save();
 
   await sendCart(res, userId, "Producto agregado al carrito");
 });

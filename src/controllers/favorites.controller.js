@@ -2,7 +2,7 @@ const Favorite = require("../models/Favorite");
 const { AppError } = require("../middleware/error.middleware");
 const { asyncHandler } = require("../middleware/error.middleware");
 const { success } = require("../utils/response-formatter");
-const { loadUserProducts } = require("../utils/user-product-list");
+const { loadUserProducts, createListIfMissing } = require("../utils/user-product-list");
 
 const sendFavorites = async (res, userId, message) => {
   const products = await loadUserProducts(Favorite, userId);
@@ -29,24 +29,29 @@ const addFavorite = asyncHandler(async (req, res, next) => {
   // Siempre usar el usuario autenticado, no confiar en el body
   const userId = currentUserId;
 
-  const existingFavorites = await Favorite.findOne({ userId });
+  let existingFavorites = await Favorite.findOne({ userId });
 
-  if (existingFavorites) {
-    const existingProduct = existingFavorites.products.find(
-      (p) => p.product.toString() === productId
-    );
-    if (existingProduct) {
-      throw new AppError("El producto ya está en favoritos", 400, "FAVORITE_ALREADY_EXISTS");
+  if (!existingFavorites) {
+    const created = await createListIfMissing(Favorite, userId, { product: productId });
+    if (created) {
+      await sendFavorites(res, userId, "Se agregó en favoritos");
+      return;
     }
-    existingFavorites.products.push({ product: productId });
-    await existingFavorites.save();
-  } else {
-    const newFavorite = new Favorite({
-      userId,
-      products: [{ product: productId }],
-    });
-    await newFavorite.save();
+    // A concurrent first add created the favorites: update them instead
+    existingFavorites = await Favorite.findOne({ userId });
+    if (!existingFavorites) {
+      throw new AppError('No se pudo actualizar favoritos, intentá de nuevo', 409, 'CONCURRENT_UPDATE');
+    }
   }
+
+  const existingProduct = existingFavorites.products.find(
+    (p) => p.product.toString() === productId
+  );
+  if (existingProduct) {
+    throw new AppError("El producto ya está en favoritos", 400, "FAVORITE_ALREADY_EXISTS");
+  }
+  existingFavorites.products.push({ product: productId });
+  await existingFavorites.save();
 
   await sendFavorites(res, userId, "Se agregó en favoritos");
 });

@@ -151,12 +151,31 @@ const Producto = require('../models/Product');
 
 // Records the order of every write so tests can assert nothing is written
 // before the duplicate check and products follow only after the save.
-const renameHarness = (Model, item, { taken = null, modifiedCount = 0, saveError = null } = {}) => {
+// `stored` is what MongoDB holds: a write inside a transaction only lands
+// there when its session commits; `sessions` records each transaction.
+const renameHarness = (
+  Model,
+  item,
+  { taken = null, modifiedCount = 0, saveError = null, updateManyError = null } = {},
+) => {
   const log = [];
-  const calls = { exists: [], updateMany: [] };
-  item.save = async () => {
+  const calls = { exists: [], updateMany: [], saveOptions: [], updateManyOptions: [] };
+  const stored = { name: item.name, productsRenamedTo: null };
+  const sessions = [];
+
+  const write = (session, apply) => {
+    if (session) session.pending.push(apply);
+    else apply();
+  };
+
+  item.save = async (options) => {
     log.push('save');
+    calls.saveOptions.push(options);
     if (saveError) throw saveError;
+    const name = item.name;
+    write(options?.session, () => {
+      stored.name = name;
+    });
     return item;
   };
   stub(Model, 'findById', async () => item);
@@ -165,12 +184,42 @@ const renameHarness = (Model, item, { taken = null, modifiedCount = 0, saveError
     calls.exists.push(filter);
     return taken;
   });
-  stub(Producto, 'updateMany', async (filter, update) => {
+  stub(Model, 'startSession', async () => {
+    const session = {
+      pending: [],
+      active: false,
+      committed: false,
+      aborted: false,
+      ended: false,
+      startTransaction() { this.active = true; },
+      inTransaction() { return this.active; },
+      async commitTransaction() {
+        this.pending.forEach((apply) => apply());
+        this.active = false;
+        this.committed = true;
+      },
+      async abortTransaction() {
+        this.pending = [];
+        this.active = false;
+        this.aborted = true;
+      },
+      async endSession() { this.ended = true; },
+    };
+    sessions.push(session);
+    return session;
+  });
+  stub(Producto, 'updateMany', async (filter, update, options) => {
     log.push('updateMany');
     calls.updateMany.push([filter, update]);
+    calls.updateManyOptions.push(options);
+    if (updateManyError) throw updateManyError;
+    const field = Object.keys(update.$set)[0];
+    write(options?.session, () => {
+      stored.productsRenamedTo = update.$set[field];
+    });
     return { modifiedCount };
   });
-  return { log, calls };
+  return { log, calls, stored, sessions };
 };
 
 for (const [Model, field] of [
@@ -243,6 +292,62 @@ test('a duplicate key error on save is a 409 and products are not touched', asyn
     return true;
   });
   assert.deepEqual(log, ['exists', 'save']);
+});
+
+test('a rename saves the entry and moves its products in one committed transaction', async () => {
+  const item = fakeItem({ name: 'Ceras' });
+  const { calls, stored, sessions } = renameHarness(Category, item, { modifiedCount: 3 });
+
+  const result = await taxonomyService.update(Category, item._id, { name: 'Selladores' });
+
+  assert.equal(sessions.length, 1);
+  const [session] = sessions;
+  assert.equal(calls.saveOptions[0]?.session, session);
+  assert.equal(calls.updateManyOptions[0]?.session, session);
+  assert.equal(session.committed, true);
+  assert.equal(session.ended, true);
+  assert.deepEqual(stored, { name: 'Selladores', productsRenamedTo: 'Selladores' });
+  assert.equal(result.productsUpdated, 3);
+});
+
+test('when moving the products fails, the rename is rolled back and the error propagates', async () => {
+  const item = fakeItem({ name: 'Ceras' });
+  const failure = new Error('updateMany failed');
+  const { log, stored, sessions } = renameHarness(Category, item, { updateManyError: failure });
+
+  await assert.rejects(taxonomyService.update(Category, item._id, { name: 'Selladores' }), (err) => err === failure);
+
+  assert.deepEqual(log, ['exists', 'save', 'updateMany']);
+  const [session] = sessions;
+  assert.equal(session.aborted, true);
+  assert.equal(session.committed, false);
+  assert.equal(session.ended, true);
+  assert.deepEqual(stored, { name: 'Ceras', productsRenamedTo: null });
+});
+
+test('a duplicate key error on a rename save is still a 409 and the transaction is aborted', async () => {
+  const item = fakeItem({ name: 'Ceras' });
+  const duplicate = Object.assign(new Error('E11000 duplicate key error'), { name: 'MongoServerError', code: 11000 });
+  const { stored, sessions } = renameHarness(Category, item, { saveError: duplicate });
+
+  await assert.rejects(taxonomyService.update(Category, item._id, { name: 'Selladores' }), (err) => {
+    assert.equal(err.statusCode, 409);
+    assert.equal(err.code, 'TAXONOMY_NAME_TAKEN');
+    return true;
+  });
+  assert.equal(sessions[0].aborted, true);
+  assert.equal(sessions[0].ended, true);
+  assert.equal(stored.name, 'Ceras');
+});
+
+test('updating other fields saves without a transaction', async () => {
+  const item = fakeItem({ name: 'Perfumes', sortOrder: 0 });
+  const { sessions, calls } = renameHarness(Category, item);
+
+  await taxonomyService.update(Category, item._id, { sortOrder: 5 });
+
+  assert.deepEqual(sessions, []);
+  assert.equal(calls.saveOptions[0], undefined);
 });
 
 test('a duplicate key error on create is a 409', async () => {

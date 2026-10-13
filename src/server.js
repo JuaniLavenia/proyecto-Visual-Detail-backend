@@ -4,6 +4,7 @@ const dns = require("dns");
 const mongoose = require("mongoose");
 const app = require('./app');
 const config = require('./config');
+const { ensureOrderCounter } = require('./services/order-counter');
 
 // El resolver DNS interno de Node (c-ares) a veces toma un DNS distinto al
 // que usa el resto de Windows (VPN, adaptador virtual, DNS del router sin
@@ -38,8 +39,19 @@ const connectWithRetry = async () => {
   }
 };
 
+// Seed the numeroPedido counter from the highest stored order (idempotent).
+// Not fatal: nextOrderNumber() also seeds a missing counter on its own.
+const seedOrderCounter = async () => {
+  try {
+    const highest = await ensureOrderCounter();
+    console.log(`contador numeroPedido listo (ultimo pedido: ${highest})`);
+  } catch (err) {
+    console.error("No se pudo sembrar el contador de pedidos:", err.message);
+  }
+};
+
 // Connect to database
-connectWithRetry();
+connectWithRetry().then(seedOrderCounter);
 
 const PORT = config.get('port');
 

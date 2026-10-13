@@ -35,7 +35,8 @@ src/
 scripts/
 ├── seed-taxonomy.js     # Carga inicial de marcas y categorías
 ├── normalize-names.js   # Normaliza nombres existentes (productos, marcas, categorías)
-└── backfill-home-taxonomy.js # Marca la home y carga las imágenes de categorías (una vez)
+├── backfill-home-taxonomy.js # Marca la home y carga las imágenes de categorías (una vez)
+└── check-integrity.js   # Duplicados, contador de numeroPedido e índices antes de desplegar
 ```
 
 ## Scripts
@@ -48,6 +49,7 @@ pnpm test               # Tests con node --test (no necesitan MongoDB)
 pnpm seed:taxonomy      # Cargar marcas y categorías en la base configurada
 pnpm normalize:names    # Dry-run: muestra los nombres a normalizar y las colisiones; `pnpm normalize:names -- --apply` escribe
 pnpm backfill:home      # Dry-run: marca para la home las marcas/categorías activas y carga las 5 imágenes de categorías vacías; `pnpm backfill:home -- --apply` escribe
+pnpm check:integrity    # Dry-run: usuarios con más de un carrito o documento de favoritos, numeroPedido repetidos y el valor del contador; `pnpm check:integrity -- --apply` siembra el contador y construye los índices (rechaza los índices únicos con duplicados, nunca borra ni fusiona)
 ```
 
 ## Configuración
@@ -303,5 +305,7 @@ docker run -p 5000:5000 --env-file .env visual-detail-backend
 # Variables necesarias
 # NODE_ENV=production, MONGODB_URI, JWT_SECRET, FRONTEND_URL
 ```
+
+**Índices y numeración de pedidos**: antes de desplegar, correr `MONGODB_URI="<prod>" pnpm check:integrity` (dry-run). Sin duplicados: desplegar y después `pnpm check:integrity -- --apply` (o dejar que autoIndex construya los índices). Con duplicados: frenar y decidir qué hacer con ellos; el script no los toca. Al arrancar, el servidor siembra el contador de `numeroPedido` con el pedido más alto (idempotente).
 
 **Home desde la base (marcas/categorías con `image` y `showOnHome`)**: desplegar primero el backend, después correr `pnpm backfill:home -- --apply` contra producción (conviene revisar antes el dry-run) y recién entonces desplegar el front, que lee `?home=true`.

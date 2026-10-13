@@ -10,7 +10,8 @@
     "test": "node --require ./src/test-helpers/test-env.js --test \"src/**/*.test.js\"",
     "seed:taxonomy": "node scripts/seed-taxonomy.js",
     "normalize:names": "node scripts/normalize-names.js",
-    "backfill:home": "node scripts/backfill-home-taxonomy.js"
+    "backfill:home": "node scripts/backfill-home-taxonomy.js",
+    "check:integrity": "node scripts/check-integrity.js"
   },
   "keywords": [],
   "author": "",

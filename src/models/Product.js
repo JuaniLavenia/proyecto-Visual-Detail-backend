@@ -27,9 +27,11 @@ const schema = new Schema({
   category: {
     type: String,
     required: true,
+    index: true,
   },
   brand: {
     type: String,
+    index: true,
   },
 });
 
