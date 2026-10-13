@@ -75,6 +75,106 @@ test('createForUser saves a provided phone to the profile and the order', async 
   assert.equal(saved.length, 1);
 });
 
+test('createForUser numbers the order from the atomic counter', async () => {
+  const Counter = require('../models/Counter');
+  const originalHandleSave = Pedido.prototype.$__handleSave;
+  const originalInc = Counter.findOneAndUpdate;
+  // Real save() middleware, no driver write
+  Pedido.prototype.save = original.save;
+  Pedido.prototype.$__handleSave = function handleSave(options, callback) {
+    saved.push(this);
+    callback(null, null);
+  };
+  Counter.findOneAndUpdate = async (filter, update) => ({ _id: filter._id, seq: 1000 + update.$inc.seq });
+  try {
+    const pedido = await pedidoService.createForUser(
+      { _id: USER_ID, phone: '+541123456789' },
+      { productos: PRODUCTOS }
+    );
+
+    assert.equal(pedido.numeroPedido, 1001);
+    assert.equal(saved.length, 1);
+  } finally {
+    Pedido.prototype.$__handleSave = originalHandleSave;
+    Counter.findOneAndUpdate = originalInc;
+  }
+});
+
+const numberTakenError = () =>
+  Object.assign(new Error('E11000 duplicate key error collection: pedidos index: numeroPedido_1 dup key'), {
+    name: 'MongoServerError',
+    code: 11000,
+    keyPattern: { numeroPedido: 1 },
+  });
+
+test('createForUser re-seeds a counter left behind the stored orders and retries the save once', async () => {
+  const Counter = require('../models/Counter');
+  const originalCounterUpdate = Counter.updateOne;
+  const originalFindOne = Pedido.findOne;
+  const seeds = [];
+  Counter.updateOne = async (filter, update, options) => {
+    seeds.push({ filter, update, options });
+    return { matchedCount: 1 };
+  };
+  Pedido.findOne = async () => ({ numeroPedido: 57 });
+  let attempts = 0;
+  Pedido.prototype.save = async function save() {
+    attempts += 1;
+    if (attempts === 1) throw numberTakenError();
+    saved.push(this);
+    return this;
+  };
+  try {
+    const pedido = await pedidoService.createForUser(
+      { _id: USER_ID, phone: '+541123456789' },
+      { productos: PRODUCTOS }
+    );
+
+    assert.equal(attempts, 2);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0], pedido);
+    assert.deepEqual(seeds.map((s) => s.update), [{ $max: { seq: 57 } }]);
+  } finally {
+    Counter.updateOne = originalCounterUpdate;
+    Pedido.findOne = originalFindOne;
+  }
+});
+
+test('createForUser does not retry a second numeroPedido collision or other duplicate keys', async () => {
+  const Counter = require('../models/Counter');
+  const originalCounterUpdate = Counter.updateOne;
+  const originalFindOne = Pedido.findOne;
+  Counter.updateOne = async () => ({ matchedCount: 1 });
+  Pedido.findOne = async () => ({ numeroPedido: 57 });
+  let attempts = 0;
+  Pedido.prototype.save = async function save() {
+    attempts += 1;
+    throw numberTakenError();
+  };
+  try {
+    await assert.rejects(
+      pedidoService.createForUser({ _id: USER_ID, phone: '+541123456789' }, { productos: PRODUCTOS }),
+      (err) => err.code === 11000
+    );
+    assert.equal(attempts, 2);
+
+    attempts = 0;
+    const otherDuplicate = Object.assign(new Error('E11000'), { code: 11000, keyPattern: { _id: 1 } });
+    Pedido.prototype.save = async function save() {
+      attempts += 1;
+      throw otherDuplicate;
+    };
+    await assert.rejects(
+      pedidoService.createForUser({ _id: USER_ID, phone: '+541123456789' }, { productos: PRODUCTOS }),
+      (err) => err === otherDuplicate
+    );
+    assert.equal(attempts, 1);
+  } finally {
+    Counter.updateOne = originalCounterUpdate;
+    Pedido.findOne = originalFindOne;
+  }
+});
+
 test('createForUser keeps an ObjectId user id castable (req.user is a document)', async () => {
   const { Types } = require('mongoose');
   const user = { _id: new Types.ObjectId(USER_ID), phone: '+541123456789' };

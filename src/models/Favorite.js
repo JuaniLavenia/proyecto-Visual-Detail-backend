@@ -5,6 +5,8 @@ const favoriteSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: "User",
     required: true,
+    // One favorites list per user: a concurrent first add fails instead of duplicating
+    unique: true,
   },
   products: [
     {

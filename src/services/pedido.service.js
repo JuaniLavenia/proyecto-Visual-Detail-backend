@@ -11,8 +11,11 @@ const { AppError } = require('../middleware/error.middleware');
 const { escapeRegex } = require('./product-query');
 const { buildUserFilter } = require('./user.service');
 const { normalizePhone, MAX_PRODUCT_QUANTITY } = require('../validators/pedido.validators');
+const { ensureOrderCounter } = require('./order-counter');
 
 const ESTADOS = ['Pendiente', 'Completado', 'Cancelado'];
+
+const isOrderNumberTaken = (err) => err?.code === 11000 && Boolean(err.keyPattern?.numeroPedido);
 const PHONE_LIKE = /^\+?\d+$/;
 
 /**
@@ -132,8 +135,15 @@ class PedidoService {
    */
   async create(pedidoData) {
     const sanitizedData = sanitizeObject(pedidoData);
-    const pedido = new Pedido(sanitizedData);
-    return await pedido.save();
+    try {
+      return await new Pedido(sanitizedData).save();
+    } catch (err) {
+      if (!isOrderNumberTaken(err) || sanitizedData.numeroPedido) throw err;
+      // The counter fell behind the stored orders (e.g. an instance still on
+      // the old numbering during a deploy): re-seed it and retry once
+      await ensureOrderCounter();
+      return await new Pedido(sanitizedData).save();
+    }
   }
 
   /**

@@ -27,15 +27,26 @@ const CATALOG = new Map([
   [PRODUCT_B, { _id: PRODUCT_B, name: 'Cera', price: 200 }],
 ]);
 
+const duplicateKeyError = () =>
+  Object.assign(new Error('E11000 duplicate key error collection: carts index: userId_1'), {
+    name: 'MongoServerError',
+    code: 11000,
+  });
+
 /**
  * In-memory stand-in for a list model (cart or favorites).
- * Supports the two call shapes the controllers use:
- * `await Model.findOne({ userId })` (a document with save) and
- * `Model.findOne({ userId }).populate('products.product')` (populated view).
+ * Supports the call shapes the controllers use:
+ * `await Model.findOne({ userId })` (a document with save),
+ * `Model.findOne({ userId }).populate('products.product')` (populated view) and
+ * `Model.updateOne({ userId }, { $setOnInsert }, { upsert: true })` (atomic first add).
+ * `saves` records every write per user; `upserts` records the upsert calls.
+ * `beforeUpsert` lets a test simulate a concurrent request winning the race.
  */
 const fakeListModel = (Model) => {
   const docs = new Map();
   const saves = [];
+  const upserts = [];
+  const race = { beforeUpsert: null };
 
   const populated = (doc) =>
     doc && {
@@ -78,7 +89,28 @@ const fakeListModel = (Model) => {
     return this;
   });
 
-  return { put, saves, docs };
+  stub(Model, 'updateOne', async (filter, update, options) => {
+    const userId = String(filter.userId);
+    upserts.push({ filter, update, options });
+    if (race.beforeUpsert) {
+      const outcome = race.beforeUpsert();
+      race.beforeUpsert = null;
+      if (outcome === 'duplicate') throw duplicateKeyError();
+    }
+    if (docs.has(userId)) return { matchedCount: 1, modifiedCount: 0, upsertedCount: 0 };
+    saves.push(userId);
+    put(
+      userId,
+      update.$setOnInsert.products.map((item) => {
+        const plain = { product: String(item.product) };
+        if (item.quantity !== undefined) plain.quantity = item.quantity;
+        return plain;
+      })
+    );
+    return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1 };
+  });
+
+  return { put, saves, docs, upserts, race };
 };
 
 let cart;
@@ -147,6 +179,70 @@ test('POST /api/cart updates an existing cart and returns the updated list', asy
   assert.deepEqual(productIds(res), [PRODUCT_A, PRODUCT_B]);
   assert.equal(res.body.data.products[1].quantity, 2);
   assert.deepEqual(cart.saves, [USER_ID]);
+});
+
+test('POST /api/cart creates the first cart with one atomic upsert keyed by the user', async () => {
+  const res = await send('post', '/api/cart', { body: { productId: PRODUCT_A, quantity: 3 } });
+
+  assert.equal(res.status, 200);
+  assert.equal(cart.upserts.length, 1);
+  const [{ filter, update, options }] = cart.upserts;
+  assert.equal(String(filter.userId), USER_ID);
+  assert.deepEqual(Object.keys(update), ['$setOnInsert']);
+  assert.deepEqual(
+    update.$setOnInsert.products.map((item) => ({ product: String(item.product), quantity: item.quantity })),
+    [{ product: PRODUCT_A, quantity: 3 }]
+  );
+  assert.equal(options.upsert, true);
+});
+
+test('POST /api/cart sets the quantity when a concurrent first add created the cart (duplicate key)', async () => {
+  // The other request inserts the cart between our findOne and our upsert
+  cart.race.beforeUpsert = () => {
+    cart.put(USER_ID, [{ product: PRODUCT_A, quantity: 1 }]);
+    return 'duplicate';
+  };
+
+  const res = await send('post', '/api/cart', { body: { productId: PRODUCT_A, quantity: 5 } });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.message, 'Producto agregado al carrito');
+  assert.deepEqual(productIds(res), [PRODUCT_A]);
+  assert.equal(res.body.data.products[0].quantity, 5);
+  assert.equal(cart.docs.size, 1);
+});
+
+test('POST /api/cart adds to the cart a concurrent first add created (no upsert happened)', async () => {
+  cart.race.beforeUpsert = () => {
+    cart.put(USER_ID, [{ product: PRODUCT_A, quantity: 1 }]);
+  };
+
+  const res = await send('post', '/api/cart', { body: { productId: PRODUCT_B, quantity: 2 } });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(productIds(res), [PRODUCT_A, PRODUCT_B]);
+  assert.equal(res.body.data.products[1].quantity, 2);
+  assert.equal(cart.docs.size, 1);
+});
+
+test('POST /api/cart rejects an invalid product id on the first add with 400 VALIDATION_ERROR and writes nothing', async () => {
+  const res = await send('post', '/api/cart', { body: { productId: 'not-an-id', quantity: 1 } });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+  assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+  assert.deepEqual(cart.saves, []);
+});
+
+test('POST /api/cart sets the quantity of a product already in the cart', async () => {
+  cart.put(USER_ID, [{ product: PRODUCT_A, quantity: 1 }]);
+
+  const res = await send('post', '/api/cart', { body: { productId: PRODUCT_A, quantity: 4 } });
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(productIds(res), [PRODUCT_A]);
+  assert.equal(res.body.data.products[0].quantity, 4);
+  assert.deepEqual(cart.upserts, []);
 });
 
 test('DELETE /api/cart/:userId/:productId returns the remaining items', async () => {
@@ -231,6 +327,48 @@ test('POST /api/favorites refuses a duplicate with 400 FAVORITE_ALREADY_EXISTS',
     error: { message: 'El producto ya está en favoritos', code: 'FAVORITE_ALREADY_EXISTS' },
   });
   assert.deepEqual(favorites.saves, []);
+});
+
+test('POST /api/favorites creates the first favorites with one atomic upsert keyed by the user', async () => {
+  const res = await send('post', '/api/favorites', { body: { productId: PRODUCT_A } });
+
+  assert.equal(res.status, 200);
+  assert.equal(favorites.upserts.length, 1);
+  const [{ filter, update, options }] = favorites.upserts;
+  assert.equal(String(filter.userId), USER_ID);
+  assert.deepEqual(Object.keys(update), ['$setOnInsert']);
+  assert.deepEqual(update.$setOnInsert.products.map((item) => String(item.product)), [PRODUCT_A]);
+  assert.equal(options.upsert, true);
+});
+
+test('POST /api/favorites adds to favorites a concurrent first add created (duplicate key)', async () => {
+  favorites.race.beforeUpsert = () => {
+    favorites.put(USER_ID, [{ product: PRODUCT_A }]);
+    return 'duplicate';
+  };
+
+  const res = await send('post', '/api/favorites', { body: { productId: PRODUCT_B } });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.message, 'Se agregó en favoritos');
+  assert.deepEqual(productIds(res), [PRODUCT_A, PRODUCT_B]);
+  assert.equal(favorites.docs.size, 1);
+});
+
+test('POST /api/favorites answers 400 FAVORITE_ALREADY_EXISTS when a concurrent first add saved the same product', async () => {
+  favorites.race.beforeUpsert = () => {
+    favorites.put(USER_ID, [{ product: PRODUCT_A }]);
+    return 'duplicate';
+  };
+
+  const res = await send('post', '/api/favorites', { body: { productId: PRODUCT_A } });
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body, {
+    success: false,
+    error: { message: 'El producto ya está en favoritos', code: 'FAVORITE_ALREADY_EXISTS' },
+  });
+  assert.equal(favorites.docs.size, 1);
 });
 
 test('DELETE /api/favorites/:userId/:productId returns the remaining items', async () => {

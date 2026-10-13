@@ -5,6 +5,8 @@ const cartSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: "User",
     required: true,
+    // One cart per user: a concurrent first add fails instead of duplicating
+    unique: true,
   },
   products: [
     {

@@ -1,4 +1,5 @@
 const { Schema, model } = require("mongoose");
+const { nextOrderNumber } = require("../services/order-counter");
 
 const pedidoSchema = new Schema({
   numeroPedido: {
@@ -9,6 +10,7 @@ const pedidoSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: "User",
     required: true,
+    index: true,
   },
   // producto and precio are missing on legacy orders, so they stay optional
   productos: [
@@ -35,6 +37,7 @@ const pedidoSchema = new Schema({
     type: String,
     enum: ["Pendiente", "Completado", "Cancelado"],
     default: "Pendiente",
+    index: true,
   },
   // Snapshot of the customer's phone at order time
   telefono: {
@@ -43,19 +46,10 @@ const pedidoSchema = new Schema({
   },
 }, { timestamps: true });
 
-pedidoSchema.pre("save", async function (next) {
-  try {
-    if (!this.numeroPedido) {
-      const ultimoPedido = await Pedido.findOne(
-        {},
-        {},
-        { sort: { numeroPedido: -1 } }
-      );
-      this.numeroPedido = ultimoPedido ? ultimoPedido.numeroPedido + 1 : 1;
-    }
-    next();
-  } catch (error) {
-    next(error);
+// Atomic numbering (counter + $inc): concurrent orders never share a number
+pedidoSchema.pre("save", async function () {
+  if (!this.numeroPedido) {
+    this.numeroPedido = await nextOrderNumber();
   }
 });
 
