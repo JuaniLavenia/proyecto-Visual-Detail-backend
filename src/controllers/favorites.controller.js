@@ -1,6 +1,13 @@
 const Favorite = require("../models/Favorite");
 const { AppError } = require("../middleware/error.middleware");
 const { asyncHandler } = require("../middleware/error.middleware");
+const { success } = require("../utils/response-formatter");
+const { loadUserProducts } = require("../utils/user-product-list");
+
+const sendFavorites = async (res, userId, message) => {
+  const products = await loadUserProducts(Favorite, userId);
+  res.status(200).json(success({ products }, message));
+};
 
 const getUserFavorites = asyncHandler(async (req, res, next) => {
   const requestedUserId = req.params.userId;
@@ -12,8 +19,7 @@ const getUserFavorites = asyncHandler(async (req, res, next) => {
     throw new AppError('Solo podés ver tus propios favoritos', 403, 'FORBIDDEN');
   }
 
-  const favorites = await Favorite.findOne({ userId: requestedUserId }).populate("products.product");
-  res.status(200).json({ message: "Favoritos", data: favorites });
+  await sendFavorites(res, requestedUserId, "Favoritos");
 });
 
 const addFavorite = asyncHandler(async (req, res, next) => {
@@ -29,21 +35,20 @@ const addFavorite = asyncHandler(async (req, res, next) => {
     const existingProduct = existingFavorites.products.find(
       (p) => p.product.toString() === productId
     );
-    if (!existingProduct) {
-      existingFavorites.products.push({ product: productId });
-      await existingFavorites.save();
-      return res.status(200).json({ message: "Se agregó en favoritos" });
-    } else {
-      return res.status(400).json({ error: "El producto ya está en favoritos" });
+    if (existingProduct) {
+      throw new AppError("El producto ya está en favoritos", 400, "FAVORITE_ALREADY_EXISTS");
     }
+    existingFavorites.products.push({ product: productId });
+    await existingFavorites.save();
   } else {
     const newFavorite = new Favorite({
       userId,
       products: [{ product: productId }],
     });
     await newFavorite.save();
-    return res.status(200).json({ message: "Se agregó en favoritos" });
   }
+
+  await sendFavorites(res, userId, "Se agregó en favoritos");
 });
 
 const deleteFavorite = asyncHandler(async (req, res, next) => {
@@ -58,15 +63,16 @@ const deleteFavorite = asyncHandler(async (req, res, next) => {
 
   const existingFavorites = await Favorite.findOne({ userId: urlUserId });
 
-  if (existingFavorites) {
-    existingFavorites.products = existingFavorites.products.filter(
-      (p) => p.product.toString() !== productId
-    );
-    await existingFavorites.save();
-    return res.status(200).json({ message: "Se eliminó de favoritos" });
-  } else {
-    return res.status(400).json({ error: "No se encontraron favoritos para el usuario" });
+  if (!existingFavorites) {
+    throw new AppError("No se encontraron favoritos para el usuario", 400, "FAVORITES_NOT_FOUND");
   }
+
+  existingFavorites.products = existingFavorites.products.filter(
+    (p) => p.product.toString() !== productId
+  );
+  await existingFavorites.save();
+
+  await sendFavorites(res, urlUserId, "Se eliminó de favoritos");
 });
 
 module.exports = {

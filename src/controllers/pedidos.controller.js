@@ -41,13 +41,7 @@ const cancelPedido = asyncHandler(async (req, res, next) => {
   }
 
   if (pedido.estado !== 'Pendiente') {
-    return res.status(400).json({
-      success: false,
-      error: {
-        message: 'No se puede cancelar un pedido que no está pendiente',
-        code: 'INVALID_STATE'
-      }
-    });
+    throw new AppError('No se puede cancelar un pedido que no está pendiente', 400, 'INVALID_STATE');
   }
 
   const updated = await pedidoService.update(req.params.id, { estado: 'Cancelado' });
@@ -73,13 +67,7 @@ const modificarEstadoPedido = asyncHandler(async (req, res, next) => {
       throw new AppError('Solo un administrador puede cambiar el pedido a ese estado', 403, 'FORBIDDEN');
     }
     if (pedido.estado !== 'Pendiente') {
-      return res.status(400).json({
-        success: false,
-        error: {
-          message: 'No se puede cancelar un pedido que no está pendiente',
-          code: 'INVALID_STATE'
-        }
-      });
+      throw new AppError('No se puede cancelar un pedido que no está pendiente', 400, 'INVALID_STATE');
     }
   }
 
