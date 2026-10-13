@@ -5,12 +5,15 @@ const { Types } = require('mongoose');
 const Pedido = require('../models/Order');
 const User = require('../models/User');
 const Producto = require('../models/Product');
+const CartItem = require('../models/Cart');
 const pedidoService = require('./pedido.service');
 
 const original = {
   save: Pedido.prototype.save,
   userUpdateOne: User.updateOne,
   productFind: Producto.find,
+  startSession: Pedido.startSession,
+  cartUpdateOne: CartItem.updateOne,
 };
 
 const SHAMPOO_ID = '64b7f0c2a1b2c3d4e5f60720';
@@ -23,13 +26,37 @@ const CATALOG = [
 ];
 
 let saved;
+let saveOptions;
 let profileUpdates;
 let productQueries;
+let cartClears;
+let txEvents;
+
+// Orders are saved in a transaction with the cart clear; tests never connect
+const fakeSession = () => {
+  const session = {
+    active: false,
+    startTransaction() { session.active = true; txEvents.push('start'); },
+    inTransaction: () => session.active,
+    async commitTransaction() { session.active = false; txEvents.push('commit'); },
+    async abortTransaction() { session.active = false; txEvents.push('abort'); },
+    async endSession() { txEvents.push('end'); },
+  };
+  return session;
+};
 
 beforeEach(() => {
   saved = [];
+  saveOptions = [];
   profileUpdates = [];
   productQueries = [];
+  cartClears = [];
+  txEvents = [];
+  Pedido.startSession = async () => fakeSession();
+  CartItem.updateOne = async (filter, update, options) => {
+    cartClears.push({ filter, update, options });
+    return { matchedCount: 1 };
+  };
   Producto.find = (filter) => {
     const query = { filter };
     productQueries.push(query);
@@ -43,8 +70,9 @@ beforeEach(() => {
     };
     return chain;
   };
-  Pedido.prototype.save = async function save() {
+  Pedido.prototype.save = async function save(options) {
     saved.push(this);
+    saveOptions.push(options);
     return this;
   };
   User.updateOne = async (filter, update) => {
@@ -57,6 +85,8 @@ afterEach(() => {
   Pedido.prototype.save = original.save;
   User.updateOne = original.userUpdateOne;
   Producto.find = original.productFind;
+  Pedido.startSession = original.startSession;
+  CartItem.updateOne = original.cartUpdateOne;
 });
 
 const USER_ID = '64b7f0c2a1b2c3d4e5f60718';
@@ -73,6 +103,41 @@ test('createForUser saves a provided phone to the profile and the order', async 
     { filter: { _id: USER_ID }, update: { $set: { phone: '+541123456789' } } },
   ]);
   assert.equal(saved.length, 1);
+});
+
+test('createForUser empties the user cart in the same transaction as the order', async () => {
+  const pedido = await pedidoService.createForUser({ _id: USER_ID, phone: '+541123456789' }, { productos: PRODUCTOS });
+
+  assert.equal(saved[0], pedido);
+  assert.equal(cartClears.length, 1);
+  assert.deepEqual(cartClears[0].filter, { userId: USER_ID });
+  assert.deepEqual(cartClears[0].update, { $set: { products: [] } });
+  assert.ok(cartClears[0].options.session, 'cart clear runs in the session');
+  assert.equal(saveOptions[0].session, cartClears[0].options.session);
+  assert.deepEqual(txEvents, ['start', 'commit', 'end']);
+});
+
+test('createForUser rolls the order back when emptying the cart fails', async () => {
+  const failure = new Error('cart write failed');
+  CartItem.updateOne = async () => { throw failure; };
+
+  await assert.rejects(
+    pedidoService.createForUser({ _id: USER_ID, phone: '+541123456789' }, { productos: PRODUCTOS }),
+    (err) => err === failure
+  );
+  assert.deepEqual(txEvents, ['start', 'abort', 'end']);
+});
+
+test('createForUser leaves the cart untouched when the order cannot be saved', async () => {
+  const failure = new Error('validation failed');
+  Pedido.prototype.save = async function save() { throw failure; };
+
+  await assert.rejects(
+    pedidoService.createForUser({ _id: USER_ID, phone: '+541123456789' }, { productos: PRODUCTOS }),
+    (err) => err === failure
+  );
+  assert.equal(cartClears.length, 0);
+  assert.deepEqual(txEvents, ['start', 'abort', 'end']);
 });
 
 test('createForUser numbers the order from the atomic counter', async () => {
@@ -133,6 +198,9 @@ test('createForUser re-seeds a counter left behind the stored orders and retries
     assert.equal(attempts, 2);
     assert.equal(saved.length, 1);
     assert.equal(saved[0], pedido);
+    // Each attempt is its own transaction; the cart is cleared once, by the one that commits
+    assert.deepEqual(txEvents, ['start', 'abort', 'end', 'start', 'commit', 'end']);
+    assert.equal(cartClears.length, 1);
     assert.deepEqual(seeds.map((s) => s.update), [{ $max: { seq: 57 } }]);
   } finally {
     Counter.updateOne = originalCounterUpdate;

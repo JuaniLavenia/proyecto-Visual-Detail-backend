@@ -6,12 +6,14 @@
 const Pedido = require('../models/Order');
 const User = require('../models/User');
 const Producto = require('../models/Product');
+const CartItem = require('../models/Cart');
 const { sanitizeFindQuery, sanitizeUpdateQuery } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 const { escapeRegex } = require('./product-query');
 const { buildUserFilter } = require('./user.service');
 const { normalizePhone, MAX_PRODUCT_QUANTITY } = require('../validators/pedido.validators');
 const { ensureOrderCounter } = require('./order-counter');
+const { withTransaction } = require('../utils/with-transaction');
 
 const ESTADOS = ['Pendiente', 'Completado', 'Cancelado'];
 
@@ -131,18 +133,28 @@ class PedidoService {
   }
 
   /**
-   * Create pedido
+   * Create pedido. With `afterSave(pedido, session)` the save and that step
+   * run in one transaction, so a failing step leaves no order behind.
    */
-  async create(pedidoData) {
+  async create(pedidoData, { afterSave } = {}) {
     const sanitizedData = sanitizeObject(pedidoData);
+    const save = () => {
+      if (!afterSave) return new Pedido(sanitizedData).save();
+      return withTransaction(Pedido, async (session) => {
+        const pedido = await new Pedido(sanitizedData).save({ session });
+        await afterSave(pedido, session);
+        return pedido;
+      });
+    };
     try {
-      return await new Pedido(sanitizedData).save();
+      return await save();
     } catch (err) {
       if (!isOrderNumberTaken(err) || sanitizedData.numeroPedido) throw err;
       // The counter fell behind the stored orders (e.g. an instance still on
-      // the old numbering during a deploy): re-seed it and retry once
+      // the old numbering during a deploy): re-seed it and retry once. A
+      // duplicate key aborts the transaction, so the retry opens a new one.
       await ensureOrderCounter();
-      return await new Pedido(sanitizedData).save();
+      return await save();
     }
   }
 
@@ -172,12 +184,19 @@ class PedidoService {
       await User.updateOne({ _id: user._id }, { $set: { phone } });
     }
 
-    return this.create({
-      usuario: user._id,
-      telefono: phone,
-      productos: lines,
-      total,
-    });
+    // The ordered products leave the cart together with the order creation
+    return this.create(
+      {
+        usuario: user._id,
+        telefono: phone,
+        productos: lines,
+        total,
+      },
+      {
+        afterSave: (pedido, session) =>
+          CartItem.updateOne({ userId: user._id }, { $set: { products: [] } }, { session }),
+      }
+    );
   }
 
   /**
