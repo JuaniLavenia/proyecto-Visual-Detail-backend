@@ -301,7 +301,7 @@ Body para crear un pedido (el dueño sale del token; nombre y precio salen de la
 
 ### Netlify (Functions)
 
-La app de Express corre como una única Netlify Function (`netlify/functions/api.js`, configurada en `netlify.toml`). No hay un servidor encendido: cada instancia abre la conexión a MongoDB en su primer request y la reutiliza mientras sigue viva (`src/db.js`). Si MongoDB no responde, la función contesta `503` con `code: DB_UNAVAILABLE`. Los archivos de `public/` (imágenes de `/img`) los sirve la CDN.
+La app de Express corre como una única Netlify Function (`netlify/functions/api.js`, configurada en `netlify.toml`). No hay un servidor encendido: cada instancia abre la conexión a MongoDB en su primer request y la reutiliza mientras sigue viva (`src/db.js`). Si MongoDB no responde, la función contesta `503` con `code: DB_UNAVAILABLE`. Netlify solo publica `netlify/static` (un `robots.txt` que pide no indexar la API). Las imágenes de productos, marcas y categorías se cargan como links externos; el backend no sirve imágenes.
 
 1. En Netlify, importar el repo. El build lo toma de `netlify.toml`.
 2. Cargar las variables en *Site configuration → Environment variables*:
