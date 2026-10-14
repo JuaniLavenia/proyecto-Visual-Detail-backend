@@ -144,7 +144,7 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 | `POST` | `/api/login` | Inicio de sesión; devuelve access y refresh token |
 | `POST` | `/api/refresh` | Nuevo par de tokens a partir de `{ refreshToken }` |
 | `POST` | `/api/logout` | Invalida el `{ refreshToken }` |
-| `POST` | `/api/forgot` | Envía el mail de recuperación de contraseña. Responde siempre lo mismo y tarda al menos 3 s, exista o no el email |
+| `POST` | `/api/forgot` | Envía el mail de recuperación de contraseña. Responde siempre lo mismo y tarda al menos 8 s, exista o no el email |
 | `POST` | `/api/reset/:id/:token` | Define una nueva contraseña con el link del mail |
 
 ### Usuarios

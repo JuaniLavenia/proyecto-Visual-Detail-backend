@@ -16,9 +16,9 @@ const { AppError } = require('../middleware/error.middleware');
 const { USER_INACTIVE_MESSAGE } = require('./auth.service');
 
 const RESET_TOKEN_EXPIRY = '15m';
-// Every "forgot password" request takes at least this long, above the usual
-// SMTP send time, so response latency does not reveal registered e-mails
-const FORGOT_MIN_RESPONSE_MS = 3000;
+// Every "forgot password" request takes at least this long, well above the
+// ~4 s SMTP send measured from Netlify, so latency does not reveal registered e-mails
+const FORGOT_MIN_RESPONSE_MS = 8000;
 // Invites for admin-created users: same token design, longer window
 const INVITE_TOKEN_EXPIRY = '72h';
 
