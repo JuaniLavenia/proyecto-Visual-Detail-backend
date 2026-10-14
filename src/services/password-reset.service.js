@@ -16,6 +16,9 @@ const { AppError } = require('../middleware/error.middleware');
 const { USER_INACTIVE_MESSAGE } = require('./auth.service');
 
 const RESET_TOKEN_EXPIRY = '15m';
+// Every "forgot password" request takes at least this long, well above the
+// ~4 s SMTP send measured from Netlify, so latency does not reveal registered e-mails
+const FORGOT_MIN_RESPONSE_MS = 8000;
 // Invites for admin-created users: same token design, longer window
 const INVITE_TOKEN_EXPIRY = '72h';
 
@@ -73,6 +76,11 @@ const buildInviteMail = (link) => ({
 });
 
 class PasswordResetService {
+  constructor() {
+    // Replaceable in tests
+    this.sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   /**
    * Build the frontend reset link for a user
    */
@@ -107,8 +115,18 @@ class PasswordResetService {
   /**
    * Public "forgot password" flow.
    * Always resolves so the response does not reveal whether the e-mail exists.
+   * The mail is sent before resolving (a serverless function freezes once
+   * the response is out), and every outcome waits the same minimum time so
+   * the SMTP round trip does not reveal it either.
    */
   async requestPasswordReset(email) {
+    await Promise.all([
+      this.sendResetMailIfAllowed(email),
+      this.sleep(FORGOT_MIN_RESPONSE_MS),
+    ]);
+  }
+
+  async sendResetMailIfAllowed(email) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const user = await User.findOne(sanitizeFindQuery({ email: normalizedEmail }));
     // Inactive users get the same silent outcome as unknown e-mails
@@ -116,12 +134,12 @@ class PasswordResetService {
       return;
     }
 
-    // Not awaited: waiting for SMTP only when the user exists would let
-    // response latency reveal which e-mails are registered.
-    this.sendResetMail(user).catch((err) => {
+    try {
+      await this.sendResetMail(user);
+    } catch (err) {
       // Log only the failure reason, never credentials or the reset link
       console.error('Password reset mail failed:', err.code || err.message);
-    });
+    }
   }
 
   /**
