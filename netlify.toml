@@ -1,0 +1,19 @@
+# The Express app runs as a single Netlify Function (netlify/functions/api.js).
+# Files under public/ (product images in /img) are served by the CDN.
+[build]
+  command = "echo Building Functions"
+  publish = "public"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["express", "mongoose"]
+
+# Every path that is not a static file goes to Express. Without force,
+# existing files in public/ keep being served by the CDN.
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200

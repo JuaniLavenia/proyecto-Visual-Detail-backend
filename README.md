@@ -31,7 +31,10 @@ src/
 ├── utils/               # Sanitización de queries, formato de respuestas, mailer, CORS
 ├── test-helpers/        # Utilidades para los tests
 ├── app.js               # Configuración de Express
-└── server.js            # Entry point
+├── db.js                # Conexión a MongoDB (una por proceso, reintenta si falla)
+├── netlify-handler.js   # Adaptador de Express a Netlify Functions
+└── server.js            # Entry point como servidor (local, Docker)
+netlify/functions/api.js # Entry point en Netlify
 scripts/
 ├── seed-taxonomy.js     # Carga inicial de marcas y categorías
 ├── normalize-names.js   # Normaliza nombres existentes (productos, marcas, categorías)
@@ -296,7 +299,25 @@ Body para crear un pedido (el dueño sale del token; nombre y precio salen de la
 
 ## Deployment
 
-El backend se despliega en Render. También hay un `Dockerfile` (Node 20 + pnpm):
+### Netlify (Functions)
+
+La app de Express corre como una única Netlify Function (`netlify/functions/api.js`, configurada en `netlify.toml`). No hay un servidor encendido: cada instancia abre la conexión a MongoDB en su primer request y la reutiliza mientras sigue viva (`src/db.js`). Si MongoDB no responde, la función contesta `503` con `code: DB_UNAVAILABLE`. Los archivos de `public/` (imágenes de `/img`) los sirve la CDN.
+
+1. En Netlify, importar el repo. El build lo toma de `netlify.toml`.
+2. Cargar las variables en *Site configuration → Environment variables*:
+   - `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGINS` y las `SMTP_*`
+   - `TRUST_PROXY=1` (Netlify está delante como proxy)
+   - `MONGO_MAX_POOL_SIZE=5` (cada instancia abre su propio pool)
+3. En MongoDB Atlas, permitir el acceso desde cualquier IP (`0.0.0.0/0`): las funciones no tienen IP fija.
+4. En el front, apuntar `VITE_API_URL` a la URL del sitio de Netlify.
+
+Límites a tener en cuenta: cada request tiene hasta 60 segundos y un body de hasta 6 MB (≈4,5 MB para archivos, que viajan en Base64). Los límites del rate limiting son por instancia, así que son aproximados. El plan gratis tiene un tope de créditos por mes: cada deploy a producción consume créditos, los deploy previews no.
+
+Para probarlo en local con la CLI: `netlify dev`.
+
+### Docker
+
+También hay un `Dockerfile` (Node 20 + pnpm) para correrlo como servidor:
 
 ```bash
 docker build -t visual-detail-backend .
@@ -306,6 +327,6 @@ docker run -p 5000:5000 --env-file .env visual-detail-backend
 # NODE_ENV=production, MONGODB_URI, JWT_SECRET, FRONTEND_URL
 ```
 
-**Índices y numeración de pedidos**: antes de desplegar, correr `MONGODB_URI="<prod>" pnpm check:integrity` (dry-run). Sin duplicados: desplegar y después `pnpm check:integrity -- --apply` (o dejar que autoIndex construya los índices). Con duplicados: frenar y decidir qué hacer con ellos; el script no los toca. Al arrancar, el servidor siembra el contador de `numeroPedido` con el pedido más alto (idempotente).
+**Índices y numeración de pedidos**: antes de desplegar, correr `MONGODB_URI="<prod>" pnpm check:integrity` (dry-run). Sin duplicados: desplegar y después `pnpm check:integrity -- --apply` (o dejar que autoIndex construya los índices). Con duplicados: frenar y decidir qué hacer con ellos; el script no los toca. Al arrancar, el servidor siembra el contador de `numeroPedido` con el pedido más alto (idempotente). En Netlify no hay arranque: el primer pedido siembra el contador si falta.
 
 **Home desde la base (marcas/categorías con `image` y `showOnHome`)**: desplegar primero el backend, después correr `pnpm backfill:home -- --apply` contra producción (conviene revisar antes el dry-run) y recién entonces desplegar el front, que lee `?home=true`.
