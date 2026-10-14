@@ -55,3 +55,54 @@ test('answers 503 in the API envelope when MongoDB is unreachable', async () => 
     },
   });
 });
+
+const express = require('express');
+const connected = async () => {};
+
+test('returns binary responses (Excel export) byte for byte', async () => {
+  const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const workbook = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80, 0xc3, 0x28]);
+  const excelApp = express();
+  excelApp.get('/api/productos/export', (req, res) => {
+    res.setHeader('Content-Type', XLSX_TYPE);
+    res.send(workbook);
+  });
+
+  const response = await createHandler(excelApp, connected)(eventFor('GET', '/api/productos/export'), {});
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.isBase64Encoded, true);
+  assert.deepEqual(Buffer.from(response.body, 'base64'), workbook);
+});
+
+const ipEchoApp = () => {
+  const ipApp = express();
+  ipApp.set('trust proxy', 1);
+  ipApp.get('/ip', (req, res) => res.json({ ip: req.ip ?? null }));
+  return ipApp;
+};
+
+const withHeaders = (headers) => {
+  const event = eventFor('GET', '/ip');
+  event.headers = { ...event.headers, ...headers };
+  return event;
+};
+
+test('req.ip is the client IP Netlify reports, so rate limits are per client', async () => {
+  const handler = createHandler(ipEchoApp(), connected);
+
+  const response = await handler(
+    withHeaders({ 'x-nf-client-connection-ip': '5.5.5.5', 'x-forwarded-for': '9.9.9.9' }),
+    {}
+  );
+
+  assert.deepEqual(JSON.parse(response.body), { ip: '5.5.5.5' });
+});
+
+test('without the Netlify header req.ip falls back to trust proxy and X-Forwarded-For', async () => {
+  const handler = createHandler(ipEchoApp(), connected);
+
+  const response = await handler(withHeaders({ 'x-forwarded-for': '7.7.7.7' }), {});
+
+  assert.deepEqual(JSON.parse(response.body), { ip: '7.7.7.7' });
+});

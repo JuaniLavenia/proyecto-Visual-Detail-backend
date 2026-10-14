@@ -306,12 +306,12 @@ La app de Express corre como una única Netlify Function (`netlify/functions/api
 1. En Netlify, importar el repo. El build lo toma de `netlify.toml`.
 2. Cargar las variables en *Site configuration → Environment variables*:
    - `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGINS` y las `SMTP_*`
-   - `TRUST_PROXY=1` (Netlify está delante como proxy)
+   - `TRUST_PROXY=1` (respaldo: la IP del cliente sale del header `x-nf-client-connection-ip` de Netlify y, si falta, de `X-Forwarded-For`)
    - `MONGO_MAX_POOL_SIZE=5` (cada instancia abre su propio pool)
 3. En MongoDB Atlas, permitir el acceso desde cualquier IP (`0.0.0.0/0`): las funciones no tienen IP fija.
 4. En el front, apuntar `VITE_API_URL` a la URL del sitio de Netlify.
 
-Límites a tener en cuenta: cada request tiene hasta 60 segundos y un body de hasta 6 MB (≈4,5 MB para archivos, que viajan en Base64). Los límites del rate limiting son por instancia, así que son aproximados. El plan gratis tiene un tope de créditos por mes: cada deploy a producción consume créditos, los deploy previews no.
+Límites a tener en cuenta: cada request tiene hasta 60 segundos y un body de hasta 6 MB (≈4,5 MB para archivos, que viajan en Base64). Los límites del rate limiting se cuentan por IP de cliente, pero cada instancia lleva su propia cuenta, así que son aproximados. Las respuestas binarias (el export de Excel) viajan en Base64: un tipo binario nuevo se agrega a `BINARY_CONTENT_TYPES` en `src/netlify-handler.js`. El plan gratis tiene un tope de créditos por mes: cada deploy a producción consume créditos, los deploy previews no.
 
 Para probarlo en local con la CLI: `netlify dev`.
 
