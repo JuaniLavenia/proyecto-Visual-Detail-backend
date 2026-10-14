@@ -15,10 +15,13 @@ const original = {
   findById: User.findById,
   sendMail: mailer.sendMail,
   consoleError: console.error,
+  sleep: passwordResetService.sleep,
 };
 
 let sentMails;
 let fakeUser;
+// Durations the service waited for; the stub resolves at once
+let sleeps;
 
 const makeUser = () => ({
   id: USER_ID,
@@ -45,6 +48,10 @@ beforeEach(() => {
     return { messageId: 'id' };
   };
   console.error = () => {};
+  sleeps = [];
+  passwordResetService.sleep = async (ms) => {
+    sleeps.push(ms);
+  };
 });
 
 afterEach(() => {
@@ -52,6 +59,7 @@ afterEach(() => {
   User.findById = original.findById;
   mailer.sendMail = original.sendMail;
   console.error = original.consoleError;
+  passwordResetService.sleep = original.sleep;
 });
 
 // ---------- requestPasswordReset ----------
@@ -99,6 +107,42 @@ test('requestPasswordReset resolves silently without mailing an inactive user', 
   await assert.doesNotReject(passwordResetService.requestPasswordReset('user@mail.com'));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sentMails.length, 0);
+});
+
+test('requestPasswordReset resolves only after the mail was sent', async () => {
+  // Serverless functions freeze once the response is out: an unawaited
+  // send never reaches the SMTP server
+  let finishSend;
+  mailer.sendMail = (mail) =>
+    new Promise((resolve) => {
+      finishSend = () => {
+        sentMails.push(mail);
+        resolve({ messageId: 'id' });
+      };
+    });
+  let settled = false;
+
+  const pending = passwordResetService.requestPasswordReset('user@mail.com').then(() => {
+    settled = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(settled, false);
+  finishSend();
+  await pending;
+  assert.equal(settled, true);
+  assert.equal(sentMails.length, 1);
+});
+
+test('requestPasswordReset waits the same minimum time whether or not the email is registered', async () => {
+  await passwordResetService.requestPasswordReset('user@mail.com');
+  await passwordResetService.requestPasswordReset('nobody@mail.com');
+  fakeUser.isActive = false;
+  await passwordResetService.requestPasswordReset('user@mail.com');
+
+  assert.equal(sleeps.length, 3);
+  assert.ok(sleeps[0] >= 1000, `minimum response time ${sleeps[0]}ms`);
+  assert.deepEqual(sleeps, [sleeps[0], sleeps[0], sleeps[0]]);
 });
 
 // ---------- sendResetLinkToUser (admin) ----------
