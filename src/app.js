@@ -38,7 +38,6 @@ app.use(cors({ origin: createCorsOriginCheck(allowedOrigins) }));
 
 // Body parsers (explicit size limits)
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
-app.use(express.static("public"));
 app.use(express.json({ limit: "1mb" }));
 
 // Health check endpoint

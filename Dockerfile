@@ -13,7 +13,6 @@ RUN corepack enable \
 # Copy only what the server needs (never .env or local node_modules)
 COPY src ./src
 COPY scripts ./scripts
-COPY public ./public
 
 ENV PORT=5000
 EXPOSE 5000

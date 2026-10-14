@@ -1,0 +1,19 @@
+# The Express app runs as a single Netlify Function (netlify/functions/api.js).
+# Only netlify/static is published, so the repository sources never reach the CDN.
+[build]
+  command = "echo Building Functions"
+  publish = "netlify/static"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Bundle every dependency into the function: with pnpm's symlinked
+# node_modules, external modules were left out of the package at runtime.
+[functions]
+  node_bundler = "esbuild"
+
+# Every path that is not a static file goes to Express.
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200

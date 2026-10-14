@@ -1,9 +1,9 @@
 require("dotenv").config();
 
 const dns = require("dns");
-const mongoose = require("mongoose");
 const app = require('./app');
 const config = require('./config');
+const { connectDB } = require('./db');
 const { ensureOrderCounter } = require('./services/order-counter');
 
 // El resolver DNS interno de Node (c-ares) a veces toma un DNS distinto al
@@ -15,15 +15,12 @@ dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 // Database connection with retry logic
 const connectWithRetry = async () => {
-  const mongoUri = config.get('mongo.uri');
-  const mongoOptions = config.get('mongo.options');
-
   const maxRetries = 5;
   const retryInterval = 5000; // 5 seconds
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await mongoose.connect(mongoUri, mongoOptions);
+      await connectDB();
       console.log("mongoose conectado");
       return;
     } catch (err) {

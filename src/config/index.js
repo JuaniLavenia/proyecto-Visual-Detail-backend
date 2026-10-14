@@ -97,7 +97,7 @@ const config = convict({
       env: 'CORS_ORIGINS'
     },
     trustProxy: {
-      doc: 'Number of reverse-proxy hops to trust for req.ip (0 locally, 1 behind Render)',
+      doc: 'Number of reverse-proxy hops to trust for req.ip (0 locally, 1 behind Netlify or Render)',
       format: 'nat',
       default: 0,
       env: 'TRUST_PROXY'
