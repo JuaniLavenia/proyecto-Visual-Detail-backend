@@ -7,9 +7,10 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Bundle every dependency into the function: with pnpm's symlinked
+# node_modules, external modules were left out of the package at runtime.
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["express", "mongoose"]
 
 # Every path that is not a static file goes to Express.
 [[redirects]]
