@@ -330,3 +330,18 @@ docker run -p 5000:5000 --env-file .env visual-detail-backend
 **Índices y numeración de pedidos**: antes de desplegar, correr `MONGODB_URI="<prod>" pnpm check:integrity` (dry-run). Sin duplicados: desplegar y después `pnpm check:integrity -- --apply` (o dejar que autoIndex construya los índices). Con duplicados: frenar y decidir qué hacer con ellos; el script no los toca. Al arrancar, el servidor siembra el contador de `numeroPedido` con el pedido más alto (idempotente). En Netlify no hay arranque: el primer pedido siembra el contador si falta.
 
 **Home desde la base (marcas/categorías con `image` y `showOnHome`)**: desplegar primero el backend, después correr `pnpm backfill:home -- --apply` contra producción (conviene revisar antes el dry-run) y recién entonces desplegar el front, que lee `?home=true`.
+
+## Versionado y releases
+
+Las versiones siguen [SemVer](https://semver.org/lang/es/) y las calcula [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`) a partir de los commits de `main`. Los PRs se mergean con **squash**, así el commit es el título del PR en formato Conventional Commits (con merge commit o rebase, release-please leería cada commit suelto):
+
+| Commit | Versión |
+|---|---|
+| `fix`, `perf`, `revert`, `deps` | patch (`1.0.0` → `1.0.1`) |
+| `feat(...)` | minor (`1.0.0` → `1.1.0`) |
+| `feat(...)!` o `BREAKING CHANGE:` | major (`1.0.0` → `2.0.0`) |
+| `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build` | no generan versión |
+
+Con cada merge a `main`, release-please abre o actualiza un PR `chore(main): release X.Y.Z` que acumula los cambios. Al mergear ese PR se actualizan `package.json` y `CHANGELOG.md`, se crea el tag `vX.Y.Z` y se publica el GitHub Release. Netlify sigue desplegando cada merge a `main`; el tag marca qué versión está en producción.
+
+La versión actual está en `.release-please-manifest.json`; la configuración, en `release-please-config.json`. Si un release del front necesita una versión mínima del backend, se indica en las notas del release del front.
