@@ -62,24 +62,36 @@ const buildSort = (sort) => {
   return { ...selected };
 };
 
+// Fixed stock filter map, mirroring the inStock/outOfStock rule in getStats.
+// "out" is "not > 0" rather than { $lte: 0 }: the stats aggregation counts a
+// null or missing stock as out of stock, and $lte would not match those.
+const STOCK_FILTERS = {
+  in: { $gt: 0 },
+  out: { $not: { $gt: 0 } },
+};
+
 const isFilterValue = (value) => typeof value === 'string' && value.trim().length > 0;
 
 /**
  * Build the Product find filter. `brand` / `category` must already be the
  * resolved canonical names (equality match); `search` is raw user input
- * and is escaped before going into $regex.
+ * and is escaped before going into $regex; `stock` is one of the
+ * STOCK_FILTERS keys (`in` / `out`), anything else is ignored.
  *
  * The result must NOT go through sanitizeFindQuery: it strips "$" from
  * string values, which would corrupt an escaped "\$" into a dangling "\".
  * Keys are fixed here and every value is a checked string, so there is no
  * operator injection surface.
  */
-const buildProductFilter = ({ brand, category, search } = {}) => {
+const buildProductFilter = ({ brand, category, search, stock } = {}) => {
   const filter = {};
   if (isFilterValue(brand)) filter.brand = brand;
   if (isFilterValue(category)) filter.category = category;
   if (isFilterValue(search)) {
     filter.name = { $regex: escapeRegex(search.trim()), $options: 'i' };
+  }
+  if (Object.prototype.hasOwnProperty.call(STOCK_FILTERS, stock)) {
+    filter.stock = { ...STOCK_FILTERS[stock] };
   }
   return filter;
 };

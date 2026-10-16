@@ -45,3 +45,15 @@ test('list query rejects repeated (array) filter params', async () => {
   const { errors } = await validate({ brand: ['a', 'b'] });
   assert.deepEqual(errors.map((e) => e.path), ['brand']);
 });
+
+test('list query accepts stock=in and stock=out', async () => {
+  for (const stock of ['in', 'out']) {
+    const { errors } = await validate({ stock });
+    assert.deepEqual(errors, []);
+  }
+});
+
+test('list query rejects an unknown stock value', async () => {
+  const { errors } = await validate({ stock: 'zero' });
+  assert.deepEqual(errors.map((e) => e.path), ['stock']);
+});
