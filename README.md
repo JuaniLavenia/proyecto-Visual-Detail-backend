@@ -333,14 +333,14 @@ docker run -p 5000:5000 --env-file .env visual-detail-backend
 
 ## Versionado y releases
 
-Las versiones siguen [SemVer](https://semver.org/lang/es/) y las calcula [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`) a partir de los títulos de los PRs, que entran con squash en formato Conventional Commits:
+Las versiones siguen [SemVer](https://semver.org/lang/es/) y las calcula [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`) a partir de los commits de `main`. Los PRs se mergean con **squash**, así el commit es el título del PR en formato Conventional Commits (con merge commit o rebase, release-please leería cada commit suelto):
 
 | Commit | Versión |
 |---|---|
-| `fix(...)`, `perf(...)` | patch (`1.0.0` → `1.0.1`) |
+| `fix`, `perf`, `revert`, `deps` | patch (`1.0.0` → `1.0.1`) |
 | `feat(...)` | minor (`1.0.0` → `1.1.0`) |
 | `feat(...)!` o `BREAKING CHANGE:` | major (`1.0.0` → `2.0.0`) |
-| `docs`, `chore`, `ci`, `test`, `refactor` | no generan versión |
+| `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build` | no generan versión |
 
 Con cada merge a `main`, release-please abre o actualiza un PR `chore(main): release X.Y.Z` que acumula los cambios. Al mergear ese PR se actualizan `package.json` y `CHANGELOG.md`, se crea el tag `vX.Y.Z` y se publica el GitHub Release. Netlify sigue desplegando cada merge a `main`; el tag marca qué versión está en producción.
 
