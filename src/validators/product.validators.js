@@ -2,6 +2,7 @@ const { query } = require('express-validator');
 
 const MAX_FILTER_LENGTH = 100;
 const SORT_VALUES = ['price_asc', 'price_desc'];
+const STOCK_VALUES = ['in', 'out'];
 
 // Optional free-text filter: must be a single string (a repeated param
 // arrives as an array and is rejected), trimmed and length-capped.
@@ -26,10 +27,15 @@ const listProductsQueryValidation = [
     .optional()
     .isIn(SORT_VALUES)
     .withMessage(`Sort debe ser uno de: ${SORT_VALUES.join(', ')}`),
+  query('stock')
+    .optional()
+    .isIn(STOCK_VALUES)
+    .withMessage(`Stock debe ser uno de: ${STOCK_VALUES.join(', ')}`),
 ];
 
 module.exports = {
   MAX_FILTER_LENGTH,
   SORT_VALUES,
+  STOCK_VALUES,
   listProductsQueryValidation,
 };

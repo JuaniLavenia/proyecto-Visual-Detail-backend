@@ -118,3 +118,21 @@ test('buildProductFilter omits empty filters', () => {
 test('buildProductFilter ignores non-string values', () => {
   assert.deepEqual(buildProductFilter({ brand: { $ne: null }, search: ['a'] }), {});
 });
+
+// stats.outOfStock aggregates $lte: ['$stock', 0], which is also true for a
+// null or missing stock; a plain { $lte: 0 } find would skip those products.
+test('buildProductFilter maps stock=out to "not > 0" so null/missing stock matches stats.outOfStock', () => {
+  assert.deepEqual(buildProductFilter({ stock: 'out' }), { stock: { $not: { $gt: 0 } } });
+});
+
+test('buildProductFilter maps stock=in to stock > 0 and ANDs it with other filters', () => {
+  assert.deepEqual(buildProductFilter({ category: 'Ceras', stock: 'in' }), {
+    category: 'Ceras',
+    stock: { $gt: 0 },
+  });
+});
+
+test('buildProductFilter ignores unknown stock values', () => {
+  assert.deepEqual(buildProductFilter({ stock: 'all' }), {});
+  assert.deepEqual(buildProductFilter({ stock: { $ne: null } }), {});
+});

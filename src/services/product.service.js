@@ -122,9 +122,10 @@ class ProductService {
    * Get all products with pagination.
    * brand/category accept a slug or a name and are resolved to the
    * canonical name stored on Product; search matches name (escaped,
-   * case-insensitive); sort is one of the fixed keys in product-query.
+   * case-insensitive); sort and stock (`in` / `out`) are fixed keys in
+   * product-query.
    */
-  async findAll({ page = 1, limit = 10, brand, category, search, sort } = {}) {
+  async findAll({ page = 1, limit = 10, brand, category, search, sort, stock } = {}) {
     const skip = (page - 1) * limit;
 
     const [brandName, categoryName] = await Promise.all([
@@ -140,7 +141,7 @@ class ProductService {
 
     // Built from fixed keys and checked strings; see buildProductFilter for
     // why it skips sanitizeFindQuery.
-    const filter = buildProductFilter({ brand: brandName, category: categoryName, search });
+    const filter = buildProductFilter({ brand: brandName, category: categoryName, search, stock });
     const sanitizedSort = sanitizeSort(buildSort(sort));
     const sanitizedProjection = sanitizeProjection({ __v: 0 });
 

@@ -164,7 +164,7 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| `GET` | `/api/productos` | Público | Listado paginado con filtros combinables (`brand`, `category`, `search`, `sort`, `page`, `limit`) |
+| `GET` | `/api/productos` | Público | Listado paginado con filtros combinables (`brand`, `category`, `search`, `sort`, `stock` = `in` / `out`, `page`, `limit`) |
 | `GET` | `/api/productos/:id` | Público | Detalle de producto |
 | `GET` | `/api/productos/stats` | Admin | Estadísticas agregadas (total, en stock, sin stock, valor total) |
 | `GET` | `/api/productos/export` | Admin | Exportar a XLSX |

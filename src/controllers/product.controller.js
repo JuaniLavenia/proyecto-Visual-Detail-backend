@@ -62,9 +62,9 @@ const getProducts = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   // Already validated (strings, trimmed, length-capped) by the route.
-  const { brand, category, search, sort } = req.query;
+  const { brand, category, search, sort, stock } = req.query;
 
-  const result = await productService.findAll({ page, limit, brand, category, search, sort });
+  const result = await productService.findAll({ page, limit, brand, category, search, sort, stock });
 
   res.json(
     paginated(result.products, {
