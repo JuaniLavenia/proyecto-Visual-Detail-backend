@@ -26,11 +26,21 @@ const workbookBuffer = (rows) => {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 };
 
-const upload = (buffer) =>
+const upload = (buffer, filename = 'productos.xlsx') =>
   request(app)
     .post('/api/productos/bulk-upload')
     .set(bearer(accessTokenFor(ADMIN_ID)))
-    .attach('file', buffer, 'productos.xlsx');
+    .attach('file', buffer, filename);
+
+const full = (overrides = {}) => ({
+  Nombre: 'Shampoo',
+  Precio: 1500,
+  Stock: 10,
+  Capacidad: '500ml',
+  Categoria: 'Lavado',
+  Marca: 'Meguiars',
+  ...overrides,
+});
 
 test('bulk upload parses an xlsx file and upserts the normalized rows', async () => {
   stubDefaultUsers();
@@ -41,19 +51,15 @@ test('bulk upload parses an xlsx file and upserts the normalized rows', async ()
   );
 
   const res = await upload(
-    workbookBuffer([
-      { Nombre: 'Shampoo', Precio: 1500, Stock: 10, Marca: 'Meguiars' },
-      { Nombre: 'Cera', Precio: 3000, Stock: 0, Categoria: 'Ceras' },
-      { Nombre: 'Sin precio' },
-    ])
+    workbookBuffer([full(), full({ Nombre: 'Cera', Precio: 3000, Stock: 0, Categoria: 'Ceras' })])
   );
 
   assert.equal(res.status, 200);
   assert.deepEqual(bulkUpsert.calls, [
     [
       [
-        { name: 'Shampoo', price: 1500, stock: 10, brand: 'Meguiars' },
-        { name: 'Cera', price: 3000, stock: 0, category: 'Ceras' },
+        { name: 'Shampoo', price: 1500, stock: 10, capacity: '500ml', category: 'Lavado', brand: 'Meguiars' },
+        { name: 'Cera', price: 3000, stock: 0, capacity: '500ml', category: 'Ceras', brand: 'Meguiars' },
       ],
     ],
   ]);
@@ -66,11 +72,7 @@ test('bulk upload counts an updated row once (matched already includes modified)
   stub(productService, 'bulkUpsert', spy({ total: 3, upserted: 1, modified: 1, matched: 2 }));
 
   const res = await upload(
-    workbookBuffer([
-      { nombre: 'A', precio: 1, stock: 1 },
-      { nombre: 'B', precio: 2, stock: 2 },
-      { nombre: 'C', precio: 3, stock: 3 },
-    ])
+    workbookBuffer([full({ Nombre: 'A' }), full({ Nombre: 'B' }), full({ Nombre: 'C' })])
   );
 
   assert.equal(res.status, 200);
@@ -78,12 +80,50 @@ test('bulk upload counts an updated row once (matched already includes modified)
   assert.equal(res.body.data.nuevos, 1);
 });
 
-test('bulk upload answers 400 when no row has the required columns', async () => {
+test('bulk upload rejects the whole file and lists every row error', async () => {
+  stubDefaultUsers();
+  const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
+
+  const res = await upload(
+    workbookBuffer([full(), full({ Precio: 'consultar' }), full({ Stock: '' })])
+  );
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+  assert.equal(res.body.error.code, 'INVALID_SHEET');
+  assert.equal(res.body.error.message, 'La planilla tiene errores. No se importó ningún producto.');
+  assert.deepEqual(res.body.error.details, [
+    { row: 3, column: 'Precio', message: 'El precio "consultar" no es un número válido (ej: 1500 o 1.500,50)' },
+    { row: 4, column: 'Stock', message: 'Falta el stock' },
+  ]);
+  assert.equal(bulkUpsert.calls.length, 0);
+});
+
+test('bulk upload answers 400 with success false when the file has no product rows', async () => {
   stubDefaultUsers();
   const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
 
   const res = await upload(workbookBuffer([{ Otra: 'x' }]));
 
   assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+  assert.equal(res.body.error.code, 'INVALID_SHEET');
+  assert.equal(bulkUpsert.calls.length, 0);
+});
+
+test('bulk upload rejects files that are not xlsx, xls or csv', async () => {
+  stubDefaultUsers();
+  const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
+
+  const res = await upload(Buffer.from('%PDF-1.4'), 'lista.pdf');
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body, {
+    success: false,
+    error: {
+      message: 'Formato no soportado. Subí un archivo .xlsx, .xls o .csv',
+      code: 'INVALID_FILE_TYPE',
+    },
+  });
   assert.equal(bulkUpsert.calls.length, 0);
 });
