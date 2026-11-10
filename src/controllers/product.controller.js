@@ -7,7 +7,7 @@
 const productService = require("../services/product.service");
 const { asyncHandler } = require("../middleware/error.middleware");
 const { success, paginated } = require("../utils/response-formatter");
-const { parseProductSheet, isSupportedSheetFile } = require("../utils/product-sheet");
+const { parseProductSheet, isSupportedSheetFile, TEMPLATE_HEADERS } = require("../utils/product-sheet");
 
 const getProducts = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
@@ -190,6 +190,23 @@ const exportProducts = asyncHandler(async (req, res, next) => {
   res.send(buffer);
 });
 
+// An empty sheet with the import headers, so the admin starts from the
+// format the import expects (the export writes the same headers)
+const downloadImportTemplate = (req, res) => {
+  const XLSX = require("xlsx");
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
+  worksheet["!cols"] = TEMPLATE_HEADERS.map((header) => ({ wch: Math.max(header.length, 14) }));
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Productos");
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader("Content-Disposition", "attachment; filename=plantilla-productos.xlsx");
+  res.send(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+};
+
 module.exports = {
   getProducts,
   getProductById,
@@ -199,4 +216,5 @@ module.exports = {
   deleteProduct,
   bulkUploadProducts,
   exportProducts,
+  downloadImportTemplate,
 };

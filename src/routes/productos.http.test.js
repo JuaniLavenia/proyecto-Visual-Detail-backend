@@ -16,6 +16,7 @@ const request = require('supertest');
 const XLSX = require('xlsx');
 
 const productService = require('../services/product.service');
+const { parseProductSheet } = require('../utils/product-sheet');
 
 afterEach(restoreStubs);
 
@@ -209,4 +210,32 @@ test('bulk upload without a mode keeps upserting (previous behavior)', async () 
   assert.equal(bulkUpsert.calls.length, 1);
   assert.equal(replaceCatalog.calls.length, 0);
   assert.equal(res.body.data.modo, 'upsert');
+});
+
+test('the import template is an xlsx with only the template headers, and it parses back', async () => {
+  stubDefaultUsers();
+
+  const res = await request(app)
+    .get('/api/productos/template')
+    .set(bearer(accessTokenFor(ADMIN_ID)))
+    .buffer(true)
+    .parse((response, done) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => done(null, Buffer.concat(chunks)));
+    });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['content-type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.equal(res.headers['content-disposition'], 'attachment; filename=plantilla-productos.xlsx');
+
+  const workbook = XLSX.read(res.body, { type: 'buffer' });
+  const grid = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+  assert.deepEqual(grid, [
+    ['nombre', 'descripcion', 'imagen', 'precio', 'precioMayorista', 'stock', 'categoria', 'capacidad', 'marca'],
+  ]);
+
+  const parsed = parseProductSheet(res.body, 'plantilla-productos.xlsx');
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(Object.keys(parsed.headers).length, 9);
 });

@@ -10,6 +10,7 @@ const {
   deleteProduct,
   bulkUploadProducts,
   exportProducts,
+  downloadImportTemplate,
 } = require("../controllers/product.controller");
 const { body, param } = require("express-validator");
 const { requestValidation } = require("../middleware/common.middleware");
@@ -50,6 +51,14 @@ router.get(
   authenticate,
   isAdmin,
   exportProducts
+);
+
+// GET /productos/template - plantilla vacía para la carga masiva (admin)
+router.get(
+  "/productos/template",
+  authenticate,
+  isAdmin,
+  downloadImportTemplate
 );
 
 // POST /productos/bulk-upload - carga masiva desde Excel (admin)
