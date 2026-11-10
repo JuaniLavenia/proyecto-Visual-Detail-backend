@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.1.0...v1.2.0) (2026-11-10)
+
+
+### Features
+
+* **import:** require existing brands/categories and match products by name, capacity and brand ([#26](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/issues/26)) ([768ce84](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/commit/768ce84217cbfad80a43b61e6b232fee30994dfd))
+
 ## [1.1.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.0.0...v1.1.0) (2026-11-10)
 
 
