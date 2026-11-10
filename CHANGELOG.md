@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.3.0...v1.4.0) (2026-11-10)
+
+
+### Features
+
+* **import:** add a download endpoint for the empty import template ([#30](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/issues/30)) ([0f9e6f0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/commit/0f9e6f01d5a7838a0fe8df60aa4356ca0232e0c0))
+
 ## [1.3.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.2.0...v1.3.0) (2026-11-10)
 
 
