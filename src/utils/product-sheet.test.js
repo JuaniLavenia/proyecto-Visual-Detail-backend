@@ -46,6 +46,8 @@ test('headers ignore case, accents and spaces, and accept URL/Link for the image
   );
 
   assert.deepEqual(result.errors, []);
+  assert.equal(result.headers.category, 'Categoría');
+  assert.equal(result.headers.image, 'Imagen URL');
   assert.deepEqual(result.rows[0].data, {
     name: 'Cera',
     description: 'Brillo',

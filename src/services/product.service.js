@@ -6,7 +6,7 @@
 const Producto = require('../models/Product');
 const ProductBrand = require('../models/Brand');
 const ProductCategory = require('../models/Category');
-const { sanitizeFindQuery, sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
+const { sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 const { normalizeName } = require('../utils/normalize-name');
 const {
@@ -73,41 +73,33 @@ const validateTaxonomySelection = (type, value, catalog = []) => {
   return normalizeTaxonomyValue(normalizedValue, match);
 };
 
-// A diferencia de validateTaxonomySelection (para create/update via UI, que
-// exige que la marca/categoria ya exista y este activa), el import de Excel
-// puede traer texto libre. En vez de rechazar la fila, matchea contra
-// cualquier entrada existente (activa o no) y si no hay match crea una
-// nueva marca/categoria inactiva: el producto se importa igual, y un admin
-// revisa/corrige/activa (o borra si fue un typo) desde el panel despues.
-//
-// `catalog` se carga UNA vez antes del loop de filas en bulkUpsert (no por
-// fila): con un archivo de varias decenas de productos, un find({}) por fila
-// suma igual cantidad de round-trips secuenciales a Mongo Atlas y el import
-// termina superando el timeout del cliente. El array se muta in-memory para
-// que un typo repetido en el mismo archivo solo cree la entrada una vez.
-const resolveOrCreateTaxonomyEntry = async (Model, rawValue, catalog) => {
-  const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
-  if (!trimmed) return rawValue;
-
-  const lookupValue = normalizeTaxonomyLookup(trimmed);
-
-  const match = catalog.find((entry) => {
-    const candidateName = typeof entry.name === 'string' ? entry.name.trim() : '';
-    const candidateSlug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
-    return (
-      normalizeTaxonomyLookup(candidateName) === lookupValue ||
-      normalizeTaxonomyLookup(candidateSlug) === lookupValue
-    );
-  });
-
-  if (match) {
-    return match.name;
-  }
-
-  const created = await Model.create({ name: normalizeName(trimmed), isActive: false });
-  catalog.push(created.toObject());
-  return created.name;
+// The spreadsheet import, like create/update from the admin, only accepts
+// brands and categories that already exist and are active: a typo in the
+// sheet becomes a row error instead of a new (junk) taxonomy entry.
+const findActiveTaxonomyName = (value, catalog) => {
+  const lookupValue = normalizeTaxonomyLookup(value);
+  const match = catalog.find(
+    (entry) =>
+      entry?.isActive &&
+      (normalizeTaxonomyLookup(entry.name) === lookupValue ||
+        normalizeTaxonomyLookup(entry.slug) === lookupValue)
+  );
+  return match ? match.name.trim() : null;
 };
+
+// What makes two products "the same" on import: name + capacity + brand,
+// ignoring case, accents and repeated spaces ("500 ml" equals "500ml").
+// Category is not part of it, so moving a product to another category
+// updates it instead of creating a copy.
+const productIdentity = ({ name, capacity, brand }) =>
+  [
+    normalizeTaxonomyLookup(name),
+    normalizeTaxonomyLookup(capacity).replace(/\s+/g, ''),
+    normalizeTaxonomyLookup(brand),
+  ].join('|');
+
+const IMPORT_FIELDS = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
+const IMPORT_COLUMN_LABELS = { name: 'nombre', category: 'categoria', brand: 'marca' };
 
 // Name normalization lives here (not as a schema setter) because update
 // and bulkWrite/replaceOne do not run setters on every path.
@@ -319,69 +311,104 @@ class ProductService {
   }
 
   /**
-   * Bulk create/update products
+   * Imports spreadsheet rows (from utils/product-sheet.js) all or nothing.
+   * Every row is checked first: brand and category must exist and be
+   * active, no two rows may be the same product, and a row may match at
+   * most one stored product. Any error means nothing is written.
+   *
+   * @param {Array<{row: number, data: object}>} rows
+   * @param {Object<string, string>} headers - field -> header text, for messages
+   * @returns {Promise<{errors: Array<{row, column, message}>, total?, upserted?, modified?, matched?}>}
    */
-  async bulkUpsert(products) {
-    const [brandCatalog, categoryCatalog] = await Promise.all([
+  async bulkUpsert(rows, headers = {}) {
+    const [brandCatalog, categoryCatalog, existing] = await Promise.all([
       ProductBrand.find({}).lean(),
       ProductCategory.find({}).lean(),
+      Producto.find({}, { name: 1, capacity: 1, brand: 1 }).lean(),
     ]);
 
+    const column = (field) => headers[field] || IMPORT_COLUMN_LABELS[field];
+    const storedByIdentity = new Map();
+    for (const product of existing) {
+      const key = productIdentity(product);
+      storedByIdentity.set(key, [...(storedByIdentity.get(key) || []), product._id]);
+    }
+
+    const errors = [];
+    const rowByIdentity = new Map();
     const operations = [];
 
-    for (const producto of products) {
-      const allowedFields = ['name', 'description', 'image', 'category', 'price', 'precioMayorista', 'stock', 'capacity', 'brand'];
-      const filteredData = {};
+    for (const { row, data } of rows) {
+      const product = {};
+      for (const field of IMPORT_FIELDS) {
+        if (data[field] !== undefined) product[field] = data[field];
+      }
+      const sanitized = sanitizeObject(product);
+      applyNormalizedName(sanitized);
 
-      for (const field of allowedFields) {
-        if (producto[field] !== undefined) {
-          filteredData[field] = producto[field];
+      let valid = true;
+      const checks = [
+        ['category', 'La categoría', categoryCatalog],
+        ['brand', 'La marca', brandCatalog],
+      ];
+      for (const [field, label, catalog] of checks) {
+        if (!hasTaxonomyValue(sanitized[field])) continue;
+        const name = findActiveTaxonomyName(sanitized[field], catalog);
+        if (name) {
+          sanitized[field] = name;
+        } else {
+          errors.push({
+            row,
+            column: column(field),
+            message: `${label} "${sanitized[field].trim()}" no existe o no está activa. Creala en el admin o corregí la planilla`,
+          });
+          valid = false;
         }
       }
+      if (!valid) continue;
 
-      const sanitizedData = sanitizeObject(filteredData);
-      // Normalized before building the upsert filter so a re-import matches
-      // the stored (already normalized) name.
-      applyNormalizedName(sanitizedData);
+      const key = productIdentity(sanitized);
+      if (rowByIdentity.has(key)) {
+        errors.push({
+          row,
+          column: column('name'),
+          message: `Es el mismo producto que la fila ${rowByIdentity.get(key)} (mismo nombre, capacidad y marca)`,
+        });
+        continue;
+      }
+      rowByIdentity.set(key, row);
 
-      if (hasTaxonomyValue(sanitizedData.brand)) {
-        sanitizedData.brand = await resolveOrCreateTaxonomyEntry(ProductBrand, sanitizedData.brand, brandCatalog);
+      const matches = storedByIdentity.get(key) || [];
+      if (matches.length > 1) {
+        errors.push({
+          row,
+          column: column('name'),
+          message: `Coincide con ${matches.length} productos que ya están cargados (están duplicados). Borrá los repetidos o usá "Reemplazar catálogo"`,
+        });
+        continue;
       }
 
-      if (hasTaxonomyValue(sanitizedData.category)) {
-        sanitizedData.category = await resolveOrCreateTaxonomyEntry(ProductCategory, sanitizedData.category, categoryCatalog);
-      }
-
-      const filtro = {
-        name: sanitizedData.name,
-        category: sanitizedData.category,
-        capacity: sanitizedData.capacity,
-        brand: sanitizedData.brand
-      };
-
-      const sanitizedFiltro = sanitizeFindQuery(filtro);
-
-      operations.push({
-        replaceOne: {
-          filter: sanitizedFiltro,
-          replacement: sanitizedData,
-          upsert: true,
-        },
-      });
+      // The sheet is the source of truth for the row: replacing keeps the
+      // product _id (carts, favorites and orders keep pointing at it)
+      operations.push(
+        matches.length === 1
+          ? { replaceOne: { filter: { _id: matches[0] }, replacement: sanitized } }
+          : { insertOne: { document: sanitized } }
+      );
     }
 
+    if (errors.length > 0) return { errors };
     if (operations.length === 0) {
-      return { total: 0, upserted: 0, modified: 0, matched: 0 };
+      return { errors: [], total: 0, upserted: 0, modified: 0, matched: 0 };
     }
 
-    // Un findOneAndUpdate por fila (secuencial) hacia MongoDB Atlas es lo que
-    // hacia que un archivo real (cientos de filas) superara el timeout del
-    // cliente. bulkWrite manda todas las operaciones en un solo round-trip.
+    // One round-trip to Atlas: a write per row used to exceed the client timeout
     const result = await Producto.bulkWrite(operations);
 
     return {
+      errors: [],
       total: operations.length,
-      upserted: result.upsertedCount,
+      upserted: result.insertedCount,
       modified: result.modifiedCount,
       matched: result.matchedCount,
     };

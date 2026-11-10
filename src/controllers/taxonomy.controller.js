@@ -17,9 +17,9 @@ const listPublic = (Model) =>
 const getBrands = listPublic(Brand);
 const getCategories = listPublic(Category);
 
-// Listados administrativos: incluyen entradas inactivas (p. ej. las que crea
-// bulkUpsert automaticamente para valores de Excel que no existian) para que
-// el admin las pueda revisar, activar o eliminar desde el panel.
+// Listados administrativos: incluyen entradas inactivas (p. ej. las que el
+// import de Excel creaba antes para valores que no existian) para que el
+// admin las pueda revisar, activar o eliminar desde el panel.
 const getAllBrands = asyncHandler(async (req, res) => {
   const items = await taxonomyService.list(Brand);
   res.json(success(items));

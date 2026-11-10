@@ -195,7 +195,9 @@ const findHeader = (grid) => {
  * @param {Buffer} buffer - the uploaded file
  * @param {string} filename - its original name; the extension picks the reader
  * @returns {{ rows: Array<{row: number, data: object}>,
+ *             headers: Object<string, string>,
  *             errors: Array<{row: number|null, column: string|null, message: string}> }}
+ *   `headers` maps each field to the header text this sheet used for it.
  */
 const parseProductSheet = (buffer, filename) => {
   const { grid, firstRow } = readGrid(buffer, filename);
@@ -204,6 +206,7 @@ const parseProductSheet = (buffer, filename) => {
   if (headerIndex === null) {
     return {
       rows: [],
+      headers: {},
       errors: [
         {
           row: null,
@@ -245,7 +248,8 @@ const parseProductSheet = (buffer, filename) => {
     }
   }
 
-  if (errors.length > 0) return { rows: [], errors };
+  const headers = Object.fromEntries([...columns].map(([field, { header }]) => [field, header]));
+  if (errors.length > 0) return { rows: [], headers, errors };
 
   const rows = [];
   grid.slice(headerIndex + 1).forEach((cells, offset) => {
@@ -276,7 +280,7 @@ const parseProductSheet = (buffer, filename) => {
     if (valid) rows.push({ row, data });
   });
 
-  return { rows, errors };
+  return { rows, headers, errors };
 };
 
 module.exports = {

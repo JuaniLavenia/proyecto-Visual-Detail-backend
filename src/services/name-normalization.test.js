@@ -69,30 +69,24 @@ test('product update without a name leaves the name untouched', async () => {
   assert.equal('name' in received.$set, false);
 });
 
-test('bulk import normalizes product names (filter and replacement) and new taxonomy names', async () => {
-  const created = [];
+test('bulk import stores the normalized product name and the canonical taxonomy names', async () => {
   let operations;
-  stub(Brand, 'find', leanResult([]));
-  stub(Category, 'find', leanResult([{ name: 'Ceras', slug: 'ceras' }]));
-  stub(Brand, 'create', async (doc) => {
-    created.push(doc);
-    return { ...doc, toObject: () => ({ ...doc }) };
-  });
+  stub(Brand, 'find', leanResult([{ name: 'Toxic shine', slug: 'toxic-shine', isActive: true }]));
+  stub(Category, 'find', leanResult([{ name: 'Ceras', slug: 'ceras', isActive: true }]));
+  stub(Producto, 'find', leanResult([]));
   stub(Producto, 'bulkWrite', async (ops) => {
     operations = ops;
-    return { upsertedCount: ops.length, modifiedCount: 0, matchedCount: 0 };
+    return { insertedCount: ops.length, modifiedCount: 0, matchedCount: 0 };
   });
 
   await productService.bulkUpsert([
-    { name: '  cera  x ', price: 10, stock: 1, capacity: '1L', category: 'ceras', brand: ' toxic   shine ' },
+    { row: 2, data: { name: '  cera  x ', price: 10, stock: 1, capacity: '1L', category: 'ceras', brand: ' toxic   shine ' } },
   ]);
 
-  assert.deepEqual(created, [{ name: 'Toxic shine', isActive: false }]);
-  const { filter, replacement } = operations[0].replaceOne;
-  assert.equal(filter.name, 'Cera x');
-  assert.equal(replacement.name, 'Cera x');
-  assert.equal(replacement.brand, 'Toxic shine');
-  assert.equal(replacement.category, 'Ceras');
+  const { document } = operations[0].insertOne;
+  assert.equal(document.name, 'Cera x');
+  assert.equal(document.brand, 'Toxic shine');
+  assert.equal(document.category, 'Ceras');
 });
 
 test('taxonomy create stores the normalized name and keeps the slug rule', async () => {
