@@ -26,11 +26,13 @@ const workbookBuffer = (rows) => {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 };
 
-const upload = (buffer, filename = 'productos.xlsx') =>
-  request(app)
+const upload = (buffer, filename = 'productos.xlsx', mode) => {
+  const req = request(app)
     .post('/api/productos/bulk-upload')
-    .set(bearer(accessTokenFor(ADMIN_ID)))
-    .attach('file', buffer, filename);
+    .set(bearer(accessTokenFor(ADMIN_ID)));
+  if (mode !== undefined) req.field('mode', mode);
+  return req.attach('file', buffer, filename);
+};
 
 const full = (overrides = {}) => ({
   Nombre: 'Shampoo',
@@ -140,4 +142,71 @@ test('bulk upload rejects files that are not xlsx, xls or csv', async () => {
     },
   });
   assert.equal(bulkUpsert.calls.length, 0);
+});
+
+test('bulk upload in replace mode replaces the catalog instead of upserting', async () => {
+  stubDefaultUsers();
+  const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
+  const replaceCatalog = stub(
+    productService,
+    'replaceCatalog',
+    spy({ errors: [], total: 1, deleted: 40, inserted: 1 })
+  );
+
+  const res = await upload(workbookBuffer([full()]), 'productos.xlsx', 'replace');
+
+  assert.equal(res.status, 200);
+  assert.equal(replaceCatalog.calls.length, 1);
+  assert.deepEqual(replaceCatalog.calls[0][0], [
+    { row: 2, data: { name: 'Shampoo', price: 1500, stock: 10, capacity: '500ml', category: 'Lavado', brand: 'Meguiars' } },
+  ]);
+  assert.equal(bulkUpsert.calls.length, 0);
+  assert.deepEqual(res.body.data, {
+    message: 'Catálogo reemplazado: 40 productos eliminados, 1 cargados',
+    modo: 'replace',
+    total: 1,
+    eliminados: 40,
+    nuevos: 1,
+  });
+});
+
+test('bulk upload in replace mode rejects the file when a row is invalid', async () => {
+  stubDefaultUsers();
+  const errors = [{ row: 2, column: 'Marca', message: 'x' }];
+  stub(productService, 'replaceCatalog', spy({ errors }));
+
+  const res = await upload(workbookBuffer([full()]), 'productos.xlsx', 'replace');
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'INVALID_SHEET');
+  assert.equal(res.body.error.message, 'La planilla tiene errores. No se modificó el catálogo.');
+  assert.deepEqual(res.body.error.details, errors);
+});
+
+test('bulk upload rejects an unknown mode before reading the file', async () => {
+  stubDefaultUsers();
+  const replaceCatalog = stub(productService, 'replaceCatalog', spy(undefined));
+  const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
+
+  const res = await upload(workbookBuffer([full()]), 'productos.xlsx', 'borrar');
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body, {
+    success: false,
+    error: { message: 'Modo de importación inválido. Usá "upsert" o "replace"', code: 'INVALID_MODE' },
+  });
+  assert.equal(replaceCatalog.calls.length + bulkUpsert.calls.length, 0);
+});
+
+test('bulk upload without a mode keeps upserting (previous behavior)', async () => {
+  stubDefaultUsers();
+  const bulkUpsert = stub(productService, 'bulkUpsert', spy({ errors: [], total: 1, upserted: 1, modified: 0, matched: 0 }));
+  const replaceCatalog = stub(productService, 'replaceCatalog', spy(undefined));
+
+  const res = await upload(workbookBuffer([full()]));
+
+  assert.equal(res.status, 200);
+  assert.equal(bulkUpsert.calls.length, 1);
+  assert.equal(replaceCatalog.calls.length, 0);
+  assert.equal(res.body.data.modo, 'upsert');
 });

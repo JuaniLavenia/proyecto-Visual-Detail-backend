@@ -68,27 +68,56 @@ const sheetError = (res, code, message, details) =>
     error: { message, code, ...(details && { details }) },
   });
 
+// "upsert" (default) adds or updates products; "replace" swaps the whole
+// catalog for the sheet. Both are all or nothing.
+const IMPORT_MODES = ["upsert", "replace"];
+
 const bulkUploadProducts = asyncHandler(async (req, res, next) => {
+  const mode = req.body?.mode || "upsert";
+  if (!IMPORT_MODES.includes(mode)) {
+    return sheetError(res, "INVALID_MODE", 'Modo de importación inválido. Usá "upsert" o "replace"');
+  }
+
   const { originalname, buffer } = req.file;
   if (!isSupportedSheetFile(originalname)) {
     return sheetError(res, "INVALID_FILE_TYPE", "Formato no soportado. Subí un archivo .xlsx, .xls o .csv");
   }
 
   const { rows, headers, errors } = parseProductSheet(buffer, originalname);
+  const rejected =
+    mode === "replace"
+      ? "La planilla tiene errores. No se modificó el catálogo."
+      : "La planilla tiene errores. No se importó ningún producto.";
 
   // All or nothing: one bad row rejects the file so nothing half-imports
   if (errors.length > 0) {
-    return sheetError(res, "INVALID_SHEET", "La planilla tiene errores. No se importó ningún producto.", errors);
+    return sheetError(res, "INVALID_SHEET", rejected, errors);
   }
   if (rows.length === 0) {
     return sheetError(res, "INVALID_SHEET", "La planilla no tiene productos debajo de los encabezados.", []);
+  }
+
+  if (mode === "replace") {
+    const resultado = await productService.replaceCatalog(rows, headers);
+    if (resultado.errors.length > 0) {
+      return sheetError(res, "INVALID_SHEET", rejected, resultado.errors);
+    }
+    return res.json(
+      success({
+        message: `Catálogo reemplazado: ${resultado.deleted} productos eliminados, ${resultado.inserted} cargados`,
+        modo: "replace",
+        total: resultado.total,
+        eliminados: resultado.deleted,
+        nuevos: resultado.inserted,
+      }),
+    );
   }
 
   // Checks brands, categories and duplicates against the catalog; writes
   // nothing when any row fails
   const resultado = await productService.bulkUpsert(rows, headers);
   if (resultado.errors.length > 0) {
-    return sheetError(res, "INVALID_SHEET", "La planilla tiene errores. No se importó ningún producto.", resultado.errors);
+    return sheetError(res, "INVALID_SHEET", rejected, resultado.errors);
   }
   // matchedCount already includes modifiedCount: adding both double-counts updates
   const exitosos = resultado.upserted + resultado.matched;
@@ -96,6 +125,7 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
   res.json(
     success({
       message: `Productos cargados/reemplazados (${exitosos} exitosos)`,
+      modo: "upsert",
       total: resultado.total,
       exitosos,
       nuevos: resultado.upserted,
