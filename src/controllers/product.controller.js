@@ -89,9 +89,13 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
       ? "La planilla tiene errores. No se modificó el catálogo."
       : "La planilla tiene errores. No se importó ningún producto.";
 
-  // All or nothing: one bad row rejects the file so nothing half-imports
+  // All or nothing: one bad row rejects the file so nothing half-imports.
+  // The rows that passed the format checks still go through the catalog
+  // checks, so the admin sees every problem of the sheet in one go.
   if (errors.length > 0) {
-    return sheetError(res, "INVALID_SHEET", rejected, errors);
+    const catalogErrors = rows.length > 0 ? await productService.checkImport(rows, headers, mode) : [];
+    const byRow = (a, b) => (a.row ?? 0) - (b.row ?? 0);
+    return sheetError(res, "INVALID_SHEET", rejected, [...errors, ...catalogErrors].sort(byRow));
   }
   if (rows.length === 0) {
     return sheetError(res, "INVALID_SHEET", "La planilla no tiene productos debajo de los encabezados.", []);
@@ -145,7 +149,10 @@ const exportProducts = asyncHandler(async (req, res, next) => {
   const data = productos.products.map((p) => ({
     nombre: p.name,
     descripcion: p.description || "",
-    imagen: p.image || "",
+    // Old products may hold a bare file name from the removed /img folder:
+    // the site already shows them without a photo, and the import only
+    // accepts links, so they are exported empty to keep the file importable
+    imagen: /^https?:\/\//i.test(String(p.image ?? "").trim()) ? p.image.trim() : "",
     precio: p.price,
     precioMayorista: p.precioMayorista ?? "",
     stock: p.stock,

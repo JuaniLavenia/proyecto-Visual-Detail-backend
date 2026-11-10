@@ -248,3 +248,42 @@ test('replaceCatalog rolls back the delete when the insert fails', async () => {
   await assert.rejects(productService.replaceCatalog([row(2)], HEADERS), /write conflict/);
   assert.deepEqual(session.events, ['start', 'abort', 'end']);
 });
+
+// checkImport: the catalog checks alone, so the controller can report them
+// together with the format errors of the same sheet
+test('checkImport (upsert) returns catalog, duplicate and stored-duplicate errors without writing', async () => {
+  const writes = setup([
+    { _id: 'p1', name: 'Shampoo', capacity: '500ml', brand: 'Sonax' },
+    { _id: 'p2', name: 'shampoo', capacity: '500ml', brand: 'Sonax' },
+  ]);
+
+  const errors = await productService.checkImport(
+    [row(2, { brand: 'Inventada' }), row(3), row(4, { name: 'CERA' }), row(5, { name: 'Shampoo' })],
+    HEADERS,
+    'upsert'
+  );
+
+  assert.deepEqual(errors, [
+    { row: 2, column: 'Marca', message: 'La marca "Inventada" no existe o no está activa. Creala en el admin o corregí la planilla' },
+    { row: 4, column: 'Nombre', message: 'Es el mismo producto que la fila 3 (mismo nombre, capacidad y marca)' },
+    {
+      row: 5,
+      column: 'Nombre',
+      message: 'Coincide con 2 productos que ya están cargados (están duplicados). Borrá los repetidos o usá "Reemplazar catálogo"',
+    },
+  ]);
+  assert.equal(writes.operations, null);
+});
+
+test('checkImport (replace) ignores stored duplicates, since the whole catalog is replaced', async () => {
+  setup([
+    { _id: 'p1', name: 'Cera', capacity: '500ml', brand: 'Sonax' },
+    { _id: 'p2', name: 'cera', capacity: '500ml', brand: 'Sonax' },
+  ]);
+
+  const errors = await productService.checkImport([row(2), row(3, { category: 'Nada' })], HEADERS, 'replace');
+
+  assert.deepEqual(errors, [
+    { row: 3, column: 'Categoría', message: 'La categoría "Nada" no existe o no está activa. Creala en el admin o corregí la planilla' },
+  ]);
+});

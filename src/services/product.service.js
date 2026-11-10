@@ -321,39 +321,7 @@ class ProductService {
    * @returns {Promise<{errors: Array<{row, column, message}>, total?, upserted?, modified?, matched?}>}
    */
   async bulkUpsert(rows, headers = {}) {
-    const [catalogs, existing] = await Promise.all([
-      loadImportCatalogs(),
-      Producto.find({}, { name: 1, capacity: 1, brand: 1 }).lean(),
-    ]);
-
-    const storedByIdentity = new Map();
-    for (const product of existing) {
-      const key = productIdentity(product);
-      storedByIdentity.set(key, [...(storedByIdentity.get(key) || []), product._id]);
-    }
-
-    const { errors, products } = checkImportRows(rows, headers, catalogs);
-    const operations = [];
-
-    for (const { row, key, product } of products) {
-      const matches = storedByIdentity.get(key) || [];
-      if (matches.length > 1) {
-        errors.push({
-          row,
-          column: importColumn(headers, 'name'),
-          message: `Coincide con ${matches.length} productos que ya están cargados (están duplicados). Borrá los repetidos o usá "Reemplazar catálogo"`,
-        });
-        continue;
-      }
-
-      // The sheet is the source of truth for the row: replacing keeps the
-      // product _id (carts, favorites and orders keep pointing at it)
-      operations.push(
-        matches.length === 1
-          ? { replaceOne: { filter: { _id: matches[0] }, replacement: product } }
-          : { insertOne: { document: product } }
-      );
-    }
+    const { errors, operations } = await planUpsert(rows, headers);
 
     if (errors.length > 0) return { errors };
     if (operations.length === 0) {
@@ -401,7 +369,63 @@ class ProductService {
 
     return { errors: [], total: documents.length, deleted: deletedCount, inserted: documents.length };
   }
+
+  /**
+   * The catalog checks of an import (brand/category, duplicate rows and, for
+   * an upsert, rows matching several stored products) without writing, so a
+   * sheet with format errors can report every problem at once.
+   *
+   * @param {'upsert'|'replace'} mode
+   * @returns {Promise<Array<{row, column, message}>>}
+   */
+  async checkImport(rows, headers = {}, mode = 'upsert') {
+    if (mode === 'replace') {
+      return checkImportRows(rows, headers, await loadImportCatalogs()).errors;
+    }
+    return (await planUpsert(rows, headers)).errors;
+  }
 }
+
+// Checks the rows and turns them into bulkWrite operations: a row matching
+// one stored product replaces it, a new one is inserted, and a row matching
+// several stored products (existing duplicates) is an error.
+const planUpsert = async (rows, headers) => {
+  const [catalogs, existing] = await Promise.all([
+    loadImportCatalogs(),
+    Producto.find({}, { name: 1, capacity: 1, brand: 1 }).lean(),
+  ]);
+
+  const storedByIdentity = new Map();
+  for (const product of existing) {
+    const key = productIdentity(product);
+    storedByIdentity.set(key, [...(storedByIdentity.get(key) || []), product._id]);
+  }
+
+  const { errors, products } = checkImportRows(rows, headers, catalogs);
+  const operations = [];
+
+  for (const { row, key, product } of products) {
+    const matches = storedByIdentity.get(key) || [];
+    if (matches.length > 1) {
+      errors.push({
+        row,
+        column: importColumn(headers, 'name'),
+        message: `Coincide con ${matches.length} productos que ya están cargados (están duplicados). Borrá los repetidos o usá "Reemplazar catálogo"`,
+      });
+      continue;
+    }
+
+    // The sheet is the source of truth for the row: replacing keeps the
+    // product _id (carts, favorites and orders keep pointing at it)
+    operations.push(
+      matches.length === 1
+        ? { replaceOne: { filter: { _id: matches[0] }, replacement: product } }
+        : { insertOne: { document: product } }
+    );
+  }
+
+  return { errors, operations };
+};
 
 // Helper functions at module level
 const sanitizeObject = (obj) => {

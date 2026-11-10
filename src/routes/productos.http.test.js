@@ -87,6 +87,7 @@ test('bulk upload counts an updated row once (matched already includes modified)
 test('bulk upload rejects the whole file and lists every row error', async () => {
   stubDefaultUsers();
   const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
+  stub(productService, 'checkImport', spy([]));
 
   const res = await upload(
     workbookBuffer([full(), full({ Precio: 'consultar' }), full({ Stock: '' })])
@@ -238,4 +239,78 @@ test('the import template is an xlsx with only the template headers, and it pars
   const parsed = parseProductSheet(res.body, 'plantilla-productos.xlsx');
   assert.deepEqual(parsed.errors, []);
   assert.equal(Object.keys(parsed.headers).length, 9);
+});
+
+test('bulk upload reports format and catalog errors of the same sheet together, sorted by row', async () => {
+  stubDefaultUsers();
+  const bulkUpsert = stub(productService, 'bulkUpsert', spy(undefined));
+  const checkImport = stub(
+    productService,
+    'checkImport',
+    spy([{ row: 2, column: 'Marca', message: 'La marca "X" no existe o no está activa. Creala en el admin o corregí la planilla' }])
+  );
+
+  const res = await upload(workbookBuffer([full({ Marca: 'X' }), full({ Precio: 'consultar' })]));
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'INVALID_SHEET');
+  assert.deepEqual(res.body.error.details, [
+    { row: 2, column: 'Marca', message: 'La marca "X" no existe o no está activa. Creala en el admin o corregí la planilla' },
+    { row: 3, column: 'Precio', message: 'El precio "consultar" no es un número válido (ej: 1500 o 1.500,50)' },
+  ]);
+  // Only the rows that passed the format checks reach the catalog checks
+  assert.equal(checkImport.calls.length, 1);
+  const [rows, headers, mode] = checkImport.calls[0];
+  assert.deepEqual(rows.map((r) => r.row), [2]);
+  assert.equal(headers.brand, 'Marca');
+  assert.equal(mode, 'upsert');
+  assert.equal(bulkUpsert.calls.length, 0);
+});
+
+test('bulk upload in replace mode also reports both kinds of errors and replaces nothing', async () => {
+  stubDefaultUsers();
+  const replaceCatalog = stub(productService, 'replaceCatalog', spy(undefined));
+  const checkImport = stub(productService, 'checkImport', spy([]));
+
+  const res = await upload(workbookBuffer([full(), full({ Stock: '' })]), 'productos.xlsx', 'replace');
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.message, 'La planilla tiene errores. No se modificó el catálogo.');
+  assert.deepEqual(res.body.error.details, [{ row: 3, column: 'Stock', message: 'Falta el stock' }]);
+  assert.equal(checkImport.calls[0][2], 'replace');
+  assert.equal(replaceCatalog.calls.length, 0);
+});
+
+test('export leaves the image empty when it is not a link, so the file re-imports', async () => {
+  stubDefaultUsers();
+  const product = { price: 10, stock: 1, category: 'Ceras', capacity: '1L', brand: 'Sonax' };
+  stub(
+    productService,
+    'findAll',
+    spy({
+      products: [
+        { ...product, name: 'Vieja', image: '1683676311747-Coffe.png' },
+        { ...product, name: 'Nueva', image: 'https://res.cloudinary.com/demo/image/upload/v1/a.heic' },
+        { ...product, name: 'Sin foto' },
+      ],
+    })
+  );
+
+  const res = await request(app)
+    .get('/api/productos/export')
+    .set(bearer(accessTokenFor(ADMIN_ID)))
+    .buffer(true)
+    .parse((response, done) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => done(null, Buffer.concat(chunks)));
+    });
+
+  assert.equal(res.status, 200);
+  const parsed = parseProductSheet(res.body, 'productos.xlsx');
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(
+    parsed.rows.map(({ data }) => [data.name, data.image]),
+    [['Vieja', undefined], ['Nueva', 'https://res.cloudinary.com/demo/image/upload/v1/a.heic'], ['Sin foto', undefined]]
+  );
 });
