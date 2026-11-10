@@ -47,7 +47,7 @@ test('bulk upload parses an xlsx file and upserts the normalized rows', async ()
   const bulkUpsert = stub(
     productService,
     'bulkUpsert',
-    spy({ total: 2, upserted: 1, modified: 1, matched: 1 })
+    spy({ errors: [], total: 2, upserted: 1, modified: 1, matched: 1 })
   );
 
   const res = await upload(
@@ -58,9 +58,10 @@ test('bulk upload parses an xlsx file and upserts the normalized rows', async ()
   assert.deepEqual(bulkUpsert.calls, [
     [
       [
-        { name: 'Shampoo', price: 1500, stock: 10, capacity: '500ml', category: 'Lavado', brand: 'Meguiars' },
-        { name: 'Cera', price: 3000, stock: 0, capacity: '500ml', category: 'Ceras', brand: 'Meguiars' },
+        { row: 2, data: { name: 'Shampoo', price: 1500, stock: 10, capacity: '500ml', category: 'Lavado', brand: 'Meguiars' } },
+        { row: 3, data: { name: 'Cera', price: 3000, stock: 0, capacity: '500ml', category: 'Ceras', brand: 'Meguiars' } },
       ],
+      { name: 'Nombre', price: 'Precio', stock: 'Stock', capacity: 'Capacidad', category: 'Categoria', brand: 'Marca' },
     ],
   ]);
   assert.equal(res.body.data.total, 2);
@@ -69,7 +70,7 @@ test('bulk upload parses an xlsx file and upserts the normalized rows', async ()
 test('bulk upload counts an updated row once (matched already includes modified)', async () => {
   stubDefaultUsers();
   // 1 new row, 2 existing rows of which 1 actually changed
-  stub(productService, 'bulkUpsert', spy({ total: 3, upserted: 1, modified: 1, matched: 2 }));
+  stub(productService, 'bulkUpsert', spy({ errors: [], total: 3, upserted: 1, modified: 1, matched: 2 }));
 
   const res = await upload(
     workbookBuffer([full({ Nombre: 'A' }), full({ Nombre: 'B' }), full({ Nombre: 'C' })])
@@ -97,6 +98,19 @@ test('bulk upload rejects the whole file and lists every row error', async () =>
     { row: 4, column: 'Stock', message: 'Falta el stock' },
   ]);
   assert.equal(bulkUpsert.calls.length, 0);
+});
+
+test('bulk upload rejects the file when the catalog check finds errors', async () => {
+  stubDefaultUsers();
+  const errors = [{ row: 2, column: 'Marca', message: 'La marca "X" no existe o no está activa. Creala en el admin o corregí la planilla' }];
+  stub(productService, 'bulkUpsert', spy({ errors }));
+
+  const res = await upload(workbookBuffer([full({ Marca: 'X' })]));
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+  assert.equal(res.body.error.code, 'INVALID_SHEET');
+  assert.deepEqual(res.body.error.details, errors);
 });
 
 test('bulk upload answers 400 with success false when the file has no product rows', async () => {

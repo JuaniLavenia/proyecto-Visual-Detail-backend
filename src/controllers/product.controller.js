@@ -74,7 +74,7 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
     return sheetError(res, "INVALID_FILE_TYPE", "Formato no soportado. Subí un archivo .xlsx, .xls o .csv");
   }
 
-  const { rows, errors } = parseProductSheet(buffer, originalname);
+  const { rows, headers, errors } = parseProductSheet(buffer, originalname);
 
   // All or nothing: one bad row rejects the file so nothing half-imports
   if (errors.length > 0) {
@@ -84,15 +84,19 @@ const bulkUploadProducts = asyncHandler(async (req, res, next) => {
     return sheetError(res, "INVALID_SHEET", "La planilla no tiene productos debajo de los encabezados.", []);
   }
 
-  const validData = rows.map(({ data }) => data);
-  const resultado = await productService.bulkUpsert(validData);
+  // Checks brands, categories and duplicates against the catalog; writes
+  // nothing when any row fails
+  const resultado = await productService.bulkUpsert(rows, headers);
+  if (resultado.errors.length > 0) {
+    return sheetError(res, "INVALID_SHEET", "La planilla tiene errores. No se importó ningún producto.", resultado.errors);
+  }
   // matchedCount already includes modifiedCount: adding both double-counts updates
   const exitosos = resultado.upserted + resultado.matched;
 
   res.json(
     success({
       message: `Productos cargados/reemplazados (${exitosos} exitosos)`,
-      total: validData.length,
+      total: resultado.total,
       exitosos,
       nuevos: resultado.upserted,
       actualizados: resultado.modified,
