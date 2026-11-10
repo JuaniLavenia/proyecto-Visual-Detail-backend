@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.2.0...v1.3.0) (2026-11-10)
+
+
+### Features
+
+* **import:** add a replace-catalog mode to the spreadsheet import ([#28](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/issues/28)) ([b59cf8e](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/commit/b59cf8e9cab36169ca5371de3c5006cc7d36df59))
+
 ## [1.2.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.1.0...v1.2.0) (2026-11-10)
 
 
