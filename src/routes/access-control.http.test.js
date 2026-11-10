@@ -52,6 +52,7 @@ const ADMIN_ROUTES = [
   { name: 'orders admin list', method: 'get', path: '/api/admin/pedidos', adminStatus: 200, service: 'adminOrders' },
   { name: 'product create', method: 'post', path: '/api/productos', body: { price: -1 }, adminStatus: 400 },
   { name: 'product bulk upload', method: 'post', path: '/api/productos/bulk-upload', adminStatus: 400 },
+  { name: 'product import template', method: 'get', path: '/api/productos/template', adminStatus: 200 },
   { name: 'taxonomy brand create', method: 'post', path: '/api/brands', body: { name: '' }, adminStatus: 400 },
   { name: 'taxonomy admin category list', method: 'get', path: '/api/categories/all', adminStatus: 200, service: 'listTaxonomy' },
 ];
