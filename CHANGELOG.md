@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.4.0...v1.4.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **import:** report every sheet error at once and export re-importable images ([#32](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/issues/32)) ([03412e8](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/commit/03412e806b5b217f3ee97d7fed8953a4df3a92f2))
+
 ## [1.4.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.3.0...v1.4.0) (2026-11-10)
 
 
