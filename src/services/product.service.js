@@ -9,6 +9,7 @@ const ProductCategory = require('../models/Category');
 const { sanitizeUpdateQuery, sanitizeSort, sanitizeProjection } = require('../utils/query-sanitizer');
 const { AppError } = require('../middleware/error.middleware');
 const { normalizeName } = require('../utils/normalize-name');
+const { withTransaction } = require('../utils/with-transaction');
 const {
   buildSort,
   buildProductFilter,
@@ -311,78 +312,35 @@ class ProductService {
   }
 
   /**
-   * Imports spreadsheet rows (from utils/product-sheet.js) all or nothing.
-   * Every row is checked first: brand and category must exist and be
-   * active, no two rows may be the same product, and a row may match at
-   * most one stored product. Any error means nothing is written.
+   * Imports spreadsheet rows (from utils/product-sheet.js) all or nothing:
+   * matching products (see productIdentity) are replaced, new ones inserted.
+   * Any row error means nothing is written.
    *
    * @param {Array<{row: number, data: object}>} rows
    * @param {Object<string, string>} headers - field -> header text, for messages
    * @returns {Promise<{errors: Array<{row, column, message}>, total?, upserted?, modified?, matched?}>}
    */
   async bulkUpsert(rows, headers = {}) {
-    const [brandCatalog, categoryCatalog, existing] = await Promise.all([
-      ProductBrand.find({}).lean(),
-      ProductCategory.find({}).lean(),
+    const [catalogs, existing] = await Promise.all([
+      loadImportCatalogs(),
       Producto.find({}, { name: 1, capacity: 1, brand: 1 }).lean(),
     ]);
 
-    const column = (field) => headers[field] || IMPORT_COLUMN_LABELS[field];
     const storedByIdentity = new Map();
     for (const product of existing) {
       const key = productIdentity(product);
       storedByIdentity.set(key, [...(storedByIdentity.get(key) || []), product._id]);
     }
 
-    const errors = [];
-    const rowByIdentity = new Map();
+    const { errors, products } = checkImportRows(rows, headers, catalogs);
     const operations = [];
 
-    for (const { row, data } of rows) {
-      const product = {};
-      for (const field of IMPORT_FIELDS) {
-        if (data[field] !== undefined) product[field] = data[field];
-      }
-      const sanitized = sanitizeObject(product);
-      applyNormalizedName(sanitized);
-
-      let valid = true;
-      const checks = [
-        ['category', 'La categoría', categoryCatalog],
-        ['brand', 'La marca', brandCatalog],
-      ];
-      for (const [field, label, catalog] of checks) {
-        if (!hasTaxonomyValue(sanitized[field])) continue;
-        const name = findActiveTaxonomyName(sanitized[field], catalog);
-        if (name) {
-          sanitized[field] = name;
-        } else {
-          errors.push({
-            row,
-            column: column(field),
-            message: `${label} "${sanitized[field].trim()}" no existe o no está activa. Creala en el admin o corregí la planilla`,
-          });
-          valid = false;
-        }
-      }
-      if (!valid) continue;
-
-      const key = productIdentity(sanitized);
-      if (rowByIdentity.has(key)) {
-        errors.push({
-          row,
-          column: column('name'),
-          message: `Es el mismo producto que la fila ${rowByIdentity.get(key)} (mismo nombre, capacidad y marca)`,
-        });
-        continue;
-      }
-      rowByIdentity.set(key, row);
-
+    for (const { row, key, product } of products) {
       const matches = storedByIdentity.get(key) || [];
       if (matches.length > 1) {
         errors.push({
           row,
-          column: column('name'),
+          column: importColumn(headers, 'name'),
           message: `Coincide con ${matches.length} productos que ya están cargados (están duplicados). Borrá los repetidos o usá "Reemplazar catálogo"`,
         });
         continue;
@@ -392,8 +350,8 @@ class ProductService {
       // product _id (carts, favorites and orders keep pointing at it)
       operations.push(
         matches.length === 1
-          ? { replaceOne: { filter: { _id: matches[0] }, replacement: sanitized } }
-          : { insertOne: { document: sanitized } }
+          ? { replaceOne: { filter: { _id: matches[0] }, replacement: product } }
+          : { insertOne: { document: product } }
       );
     }
 
@@ -413,6 +371,36 @@ class ProductService {
       matched: result.matchedCount,
     };
   }
+
+  /**
+   * Replaces the whole catalog with the sheet: every row is checked first
+   * (same rules as bulkUpsert, minus matching stored products), and only a
+   * fully valid, non-empty sheet deletes all products and inserts the new
+   * ones, in one transaction so a failed insert restores the old catalog.
+   * Orders keep their own copy of name and price; carts and favorites
+   * already skip products that no longer exist.
+   *
+   * @returns {Promise<{errors: Array<{row, column, message}>, total?, deleted?, inserted?}>}
+   */
+  async replaceCatalog(rows, headers = {}) {
+    if (rows.length === 0) {
+      return {
+        errors: [{ row: null, column: null, message: 'La planilla no tiene productos. El catálogo no se modificó.' }],
+      };
+    }
+
+    const { errors, products } = checkImportRows(rows, headers, await loadImportCatalogs());
+    if (errors.length > 0) return { errors };
+
+    const documents = products.map(({ product }) => product);
+    const { deletedCount } = await withTransaction(Producto, async (session) => {
+      const deleted = await Producto.deleteMany({}, { session });
+      await Producto.insertMany(documents, { session });
+      return deleted;
+    });
+
+    return { errors: [], total: documents.length, deleted: deletedCount, inserted: documents.length };
+  }
 }
 
 // Helper functions at module level
@@ -427,6 +415,70 @@ const sanitizeObject = (obj) => {
     sanitized[key] = sanitizeObject(obj[key]);
   }
   return sanitized;
+};
+
+const importColumn = (headers, field) => headers[field] || IMPORT_COLUMN_LABELS[field];
+
+const loadImportCatalogs = async () => {
+  const [brands, categories] = await Promise.all([
+    ProductBrand.find({}).lean(),
+    ProductCategory.find({}).lean(),
+  ]);
+  return { brands, categories };
+};
+
+// Checks each row on its own and against the rest of the sheet: brand and
+// category must be active (stored with their canonical name) and no two rows
+// may be the same product. Returns the clean product documents of the rows
+// that passed, with their identity key.
+const checkImportRows = (rows, headers, { brands, categories }) => {
+  const errors = [];
+  const products = [];
+  const rowByIdentity = new Map();
+
+  for (const { row, data } of rows) {
+    const product = {};
+    for (const field of IMPORT_FIELDS) {
+      if (data[field] !== undefined) product[field] = data[field];
+    }
+    const sanitized = sanitizeObject(product);
+    applyNormalizedName(sanitized);
+
+    let valid = true;
+    const checks = [
+      ['category', 'La categoría', categories],
+      ['brand', 'La marca', brands],
+    ];
+    for (const [field, label, catalog] of checks) {
+      if (!hasTaxonomyValue(sanitized[field])) continue;
+      const name = findActiveTaxonomyName(sanitized[field], catalog);
+      if (name) {
+        sanitized[field] = name;
+      } else {
+        errors.push({
+          row,
+          column: importColumn(headers, field),
+          message: `${label} "${sanitized[field].trim()}" no existe o no está activa. Creala en el admin o corregí la planilla`,
+        });
+        valid = false;
+      }
+    }
+    if (!valid) continue;
+
+    const key = productIdentity(sanitized);
+    if (rowByIdentity.has(key)) {
+      errors.push({
+        row,
+        column: importColumn(headers, 'name'),
+        message: `Es el mismo producto que la fila ${rowByIdentity.get(key)} (mismo nombre, capacidad y marca)`,
+      });
+      continue;
+    }
+    rowByIdentity.set(key, row);
+    products.push({ row, key, product: sanitized });
+  }
+
+  return { errors, products };
 };
 
 module.exports = Object.assign(new ProductService(), {

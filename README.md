@@ -168,7 +168,7 @@ Todas las rutas van bajo `/api`. "Auth" = requiere `Authorization: Bearer <acces
 | `GET` | `/api/productos/:id` | Público | Detalle de producto |
 | `GET` | `/api/productos/stats` | Admin | Estadísticas agregadas (total, en stock, sin stock, valor total) |
 | `GET` | `/api/productos/export` | Admin | Exportar a XLSX |
-| `POST` | `/api/productos/bulk-upload` | Admin | Importar desde `.xlsx`, `.xls` o `.csv` (multipart, campo `file`, máx. 5 MB). Encabezados en las primeras 10 filas, sin importar mayúsculas ni tildes; todo o nada: si una fila falla responde 400 `INVALID_SHEET` con `error.details: [{ row, column, message }]`. Marca y categoría tienen que existir y estar activas; un producto se identifica por nombre + capacidad + marca (sin importar mayúsculas, tildes ni espacios) y se actualiza si ya existe |
+| `POST` | `/api/productos/bulk-upload` | Admin | Importar desde `.xlsx`, `.xls` o `.csv` (multipart, campo `file`, máx. 5 MB). Encabezados en las primeras 10 filas, sin importar mayúsculas ni tildes; todo o nada: si una fila falla responde 400 `INVALID_SHEET` con `error.details: [{ row, column, message }]`. Marca y categoría tienen que existir y estar activas; un producto se identifica por nombre + capacidad + marca (sin importar mayúsculas, tildes ni espacios) y se actualiza si ya existe. Campo opcional `mode`: `upsert` (por defecto) o `replace`, que valida toda la planilla y recién entonces borra todos los productos y carga los nuevos en una transacción |
 | `POST` | `/api/productos` | Admin | Crear producto (JSON) |
 | `PUT` | `/api/productos/:id` | Admin | Actualizar producto |
 | `DELETE` | `/api/productos/:id` | Admin | Eliminar producto |
