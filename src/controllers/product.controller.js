@@ -7,56 +7,7 @@
 const productService = require("../services/product.service");
 const { asyncHandler } = require("../middleware/error.middleware");
 const { success, paginated } = require("../utils/response-formatter");
-
-/**
- * Column mapping for bulk upload
- * Maps various column names (Spanish, English, variants) to MongoDB field names
- */
-const COLUMN_MAP = {
-  // Name variations
-  name: ['name', 'nombre', 'producto', 'product', 'titulo', 'title', 'denominacion'],
-  // Description
-  description: ['description', 'descripcion', 'desc', 'detalle', 'details', 'detalles'],
-  // Image URL
-  image: ['image', 'imagen', 'foto', 'photo', 'url_imagen', 'url_imagen', 'imagen_url'],
-  // Price
-  price: ['price', 'precio', 'cost', 'costo', 'valor'],
-  // Wholesale price
-  precioMayorista: ['precioMayorista', 'precio_mayorista', 'mayorista', 'wholesale', 'wholesalePrice', 'precio mayorista'],
-  // Stock
-  stock: ['stock', 'cantidad', 'quantity', 'disponible', 'available'],
-  // Capacity
-  capacity: ['capacity', 'capacidad', 'volumen', 'volume', 'size', 'tamanio', 'tamano'],
-  // Category
-  category: ['category', 'categoria', 'cat', 'tipo', 'type', 'clase'],
-  // Brand
-  brand: ['brand', 'marca', 'fabricante', 'manufacturer', 'marca_comercial'],
-};
-
-/**
- * Normalize column names from Excel to MongoDB format
- * @param {Object} row - Raw row from Excel
- * @returns {Object} - Normalized row with MongoDB field names
- */
-const normalizeRow = (row) => {
-  const normalized = {};
-  
-  for (const [mongoField, possibleNames] of Object.entries(COLUMN_MAP)) {
-    // Try to find the value using any of the possible column names
-    for (const possibleName of possibleNames) {
-      // Check exact match (case-insensitive)
-      const exactMatch = Object.keys(row).find(
-        k => k.toLowerCase().trim() === possibleName.toLowerCase()
-      );
-      if (exactMatch && row[exactMatch] !== undefined && row[exactMatch] !== '') {
-        normalized[mongoField] = row[exactMatch];
-        break;
-      }
-    }
-  }
-  
-  return normalized;
-};
+const { parseProductSheet, isSupportedSheetFile } = require("../utils/product-sheet");
 
 const getProducts = asyncHandler(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
@@ -110,28 +61,30 @@ const deleteProduct = asyncHandler(async (req, res, next) => {
   res.json(success(null, "Producto eliminado"));
 });
 
+// Bulk-upload failures carry the per-row list so the admin can fix the sheet
+const sheetError = (res, code, message, details) =>
+  res.status(400).json({
+    success: false,
+    error: { message, code, ...(details && { details }) },
+  });
+
 const bulkUploadProducts = asyncHandler(async (req, res, next) => {
-  const XLSX = require("xlsx");
-  const buffer = req.file.buffer;
-  const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheetName = workbook.SheetNames[0];
-  const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-  // Normalize column names to MongoDB format
-  const data = rawData.map(row => normalizeRow(row));
-
-  // Filter out rows that don't have at least the required fields
-  const validData = data.filter(row => row.name && (row.price !== undefined) && row.stock !== undefined);
-
-  if (validData.length === 0) {
-    return res.status(400).json(
-      success({
-        message: 'No se encontraron productos válidos en el archivo. Asegúrate de tener columnas: nombre, precio, stock',
-        productos: [],
-      })
-    );
+  const { originalname, buffer } = req.file;
+  if (!isSupportedSheetFile(originalname)) {
+    return sheetError(res, "INVALID_FILE_TYPE", "Formato no soportado. Subí un archivo .xlsx, .xls o .csv");
   }
 
+  const { rows, errors } = parseProductSheet(buffer, originalname);
+
+  // All or nothing: one bad row rejects the file so nothing half-imports
+  if (errors.length > 0) {
+    return sheetError(res, "INVALID_SHEET", "La planilla tiene errores. No se importó ningún producto.", errors);
+  }
+  if (rows.length === 0) {
+    return sheetError(res, "INVALID_SHEET", "La planilla no tiene productos debajo de los encabezados.", []);
+  }
+
+  const validData = rows.map(({ data }) => data);
   const resultado = await productService.bulkUpsert(validData);
   // matchedCount already includes modifiedCount: adding both double-counts updates
   const exitosos = resultado.upserted + resultado.matched;
@@ -154,7 +107,7 @@ const exportProducts = asyncHandler(async (req, res, next) => {
   const productos = await productService.findAll({ page: 1, limit: 10000 });
 
   // Prepare data for Excel with human-readable column names
-  // These names match the COLUMN_MAP so the file can be re-imported
+  // These names match the import headers (utils/product-sheet.js) so the file can be re-imported
   const data = productos.products.map((p) => ({
     nombre: p.name,
     descripcion: p.description || "",
