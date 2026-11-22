@@ -18,6 +18,14 @@ const { listProductsQueryValidation } = require("../validators/product.validator
 const { authenticate } = require("../middleware/auth.middleware");
 const { isAdmin } = require("../middleware/admin.middleware");
 
+// Must match the maxLength of the admin product forms
+const DESCRIPTION_MAX_LENGTH = 1000;
+const descriptionValidation = body("description")
+  .optional()
+  .isString()
+  .isLength({ max: DESCRIPTION_MAX_LENGTH })
+  .withMessage(`La descripción no puede superar los ${DESCRIPTION_MAX_LENGTH} caracteres`);
+
 // Bulk upload is a single Excel/CSV file held in memory: cap its size
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
@@ -91,6 +99,7 @@ router.post(
     body("name").optional().trim().notEmpty().withMessage("El nombre no puede estar vacío"),
     body("price").optional().isFloat({ min: 0 }).withMessage("El precio debe ser un número positivo"),
     body("stock").optional().isInt({ min: 0 }).withMessage("El stock debe ser un número entero"),
+    descriptionValidation,
   ],
   requestValidation,
   postProduct
@@ -118,6 +127,7 @@ router.put(
     body("name").optional().trim().notEmpty().withMessage("El nombre no puede estar vacío"),
     body("price").optional().isFloat({ min: 0 }).withMessage("El precio debe ser un número positivo"),
     body("stock").optional().isInt({ min: 0 }).withMessage("El stock debe ser un número entero"),
+    descriptionValidation,
   ],
   requestValidation,
   updateProduct

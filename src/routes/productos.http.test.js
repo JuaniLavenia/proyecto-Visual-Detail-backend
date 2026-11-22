@@ -314,3 +314,55 @@ test('export leaves the image empty when it is not a link, so the file re-import
     [['Vieja', undefined], ['Nueva', 'https://res.cloudinary.com/demo/image/upload/v1/a.heic'], ['Sin foto', undefined]]
   );
 });
+
+const PRODUCT_ID = '507f1f77bcf86cd799439011';
+const adminSend = (method, path, body) =>
+  request(app)[method](path).set(bearer(accessTokenFor(ADMIN_ID))).send(body);
+
+test('create accepts a description of exactly 1000 characters', async () => {
+  stubDefaultUsers();
+  const create = stub(productService, 'create', spy({ _id: PRODUCT_ID }));
+
+  const res = await adminSend('post', '/api/productos', { name: 'Shampoo', description: 'a'.repeat(1000) });
+
+  assert.equal(res.status, 201);
+  assert.equal(create.calls.length, 1);
+  assert.equal(create.calls[0][0].description.length, 1000);
+});
+
+test('create rejects a description longer than 1000 characters', async () => {
+  stubDefaultUsers();
+  const create = stub(productService, 'create', spy({ _id: PRODUCT_ID }));
+
+  const res = await adminSend('post', '/api/productos', { name: 'Shampoo', description: 'a'.repeat(1001) });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+  assert.deepEqual(res.body.error.details, [
+    { field: 'description', message: 'La descripción no puede superar los 1000 caracteres' },
+  ]);
+  assert.equal(create.calls.length, 0);
+});
+
+test('update rejects a description longer than 1000 characters', async () => {
+  stubDefaultUsers();
+  const update = stub(productService, 'update', spy({ _id: PRODUCT_ID }));
+
+  const res = await adminSend('put', `/api/productos/${PRODUCT_ID}`, { description: 'a'.repeat(1001) });
+
+  assert.equal(res.status, 400);
+  assert.deepEqual(res.body.error.details, [
+    { field: 'description', message: 'La descripción no puede superar los 1000 caracteres' },
+  ]);
+  assert.equal(update.calls.length, 0);
+});
+
+test('update still accepts a request without description (previous behavior)', async () => {
+  stubDefaultUsers();
+  const update = stub(productService, 'update', spy({ _id: PRODUCT_ID }));
+
+  const res = await adminSend('put', `/api/productos/${PRODUCT_ID}`, { price: 100 });
+
+  assert.equal(res.status, 200);
+  assert.equal(update.calls.length, 1);
+});
