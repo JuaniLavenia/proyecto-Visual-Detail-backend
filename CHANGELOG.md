@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.4.1...v1.5.0) (2026-11-22)
+
+
+### Features
+
+* **products:** limit description to 1000 characters ([#34](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/issues/34)) ([8d01e4e](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/commit/8d01e4e1d468776173d58f69ea62975df61cd9ae))
+
 ## [1.4.1](https://github.com/JuaniLavenia/proyecto-Visual-Detail-backend/compare/v1.4.0...v1.4.1) (2026-11-10)
 
 
